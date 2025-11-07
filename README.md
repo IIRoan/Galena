@@ -236,7 +236,6 @@ just run-vm-qcow2       # Test in browser-based VM
 
 ## Community
 
-- [Universal Blue Forums](https://universal-blue.discourse.group/)
 - [Universal Blue Discord](https://discord.gg/WEu6BdFEtp)
 - [bootc Discussion](https://github.com/bootc-dev/bootc/discussions)
 
@@ -255,8 +254,3 @@ This template provides security features for production use:
 - Build provenance tracking
 
 These security features are disabled by default to allow immediate testing. When you're ready for production, see the "Love Your Image? Let's Go to Production" section above to enable them.
-
----
-
-Template maintained by [Universal Blue Project](https://universal-blue.org/)
-
