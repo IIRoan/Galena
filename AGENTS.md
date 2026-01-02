@@ -318,7 +318,7 @@ FROM scratch AS ctx
 
 COPY build /build
 COPY custom /custom
-# Import from OCI containers - Renovate updates :latest to SHA digests
+# Import from OCI containers - Renovate updates :latest to SHA-256 digests
 COPY --from=ghcr.io/projectbluefin/common:latest /system_files /oci/common
 COPY --from=ghcr.io/projectbluefin/branding:latest /system_files /oci/branding
 COPY --from=ghcr.io/ublue-os/artwork:latest /system_files /oci/artwork
