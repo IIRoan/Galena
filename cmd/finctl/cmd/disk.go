@@ -1,0 +1,147 @@
+package cmd
+
+import (
+	"context"
+	"fmt"
+
+	"github.com/charmbracelet/huh"
+	"github.com/spf13/cobra"
+
+	"github.com/finpilot/finctl/internal/build"
+	"github.com/finpilot/finctl/internal/ui"
+)
+
+var (
+	diskImage       string
+	diskOutputDir   string
+	diskConfigFile  string
+	diskRootFS      string
+	diskUseJust     bool
+	diskInteractive bool
+)
+
+var diskCmd = &cobra.Command{
+	Use:   "disk <type>",
+	Short: "Build bootable disk images (qcow2, raw, iso)",
+	Long: `Build bootable disk images using bootc-image-builder.
+
+Supported output types:
+  qcow2           - QCOW2 disk image (for QEMU/KVM)
+  raw             - Raw disk image
+  iso             - Bootable ISO installer
+  vmdk            - VMware disk image
+  ami             - Amazon Machine Image
+  anaconda-iso    - Anaconda-based installer ISO
+  bootc-installer - Bootc installer ISO
+
+Examples:
+  # Build a QCOW2 image for VM testing
+  finctl disk qcow2
+
+  # Build an ISO installer
+  finctl disk iso
+
+  # Build with a specific image reference
+  finctl disk qcow2 --image ghcr.io/myorg/myimage:stable
+
+  # Build with custom output directory
+  finctl disk qcow2 --output ./images
+
+  # Use existing Justfile recipes
+  finctl disk qcow2 --just`,
+	Args:      cobra.ExactArgs(1),
+	ValidArgs: build.ListOutputTypes(),
+	RunE:      runDisk,
+}
+
+func init() {
+	diskCmd.Flags().StringVar(&diskImage, "image", "", "Source container image (default: local build)")
+	diskCmd.Flags().StringVarP(&diskOutputDir, "output", "o", "", "Output directory (default: ./output)")
+	diskCmd.Flags().StringVar(&diskConfigFile, "config", "", "Disk config TOML file")
+	diskCmd.Flags().StringVar(&diskRootFS, "rootfs", "ext4", "Root filesystem type (ext4, xfs, btrfs)")
+	diskCmd.Flags().BoolVar(&diskUseJust, "just", false, "Use existing Justfile recipes")
+	diskCmd.Flags().BoolVarP(&diskInteractive, "interactive", "i", false, "Interactive mode")
+}
+
+func runDisk(cmd *cobra.Command, args []string) error {
+	ctx := context.Background()
+	outputType := args[0]
+
+	rootDir, err := getProjectRoot()
+	if err != nil {
+		return fmt.Errorf("finding project root: %w", err)
+	}
+
+	// Interactive mode
+	if diskInteractive {
+		if err := promptDiskOptions(&outputType); err != nil {
+			return err
+		}
+	}
+
+	diskBuilder := build.NewDiskBuilder(cfg, rootDir, logger)
+
+	// Use just if requested
+	if diskUseJust {
+		return diskBuilder.BuildViaJust(ctx, outputType)
+	}
+
+	// Determine image reference
+	imageRef := diskImage
+	if imageRef == "" {
+		imageRef = cfg.ImageRef("main", "latest")
+	}
+
+	opts := build.DiskOptions{
+		ImageRef:   imageRef,
+		OutputType: outputType,
+		OutputDir:  diskOutputDir,
+		ConfigFile: diskConfigFile,
+		RootFSType: diskRootFS,
+	}
+
+	outputPath, err := diskBuilder.Build(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	// Print success message
+	fmt.Println()
+	fmt.Println(ui.SuccessBox.Render(fmt.Sprintf(
+		"Disk image created successfully!\n\nType: %s\nOutput: %s",
+		outputType,
+		outputPath,
+	)))
+
+	return nil
+}
+
+func promptDiskOptions(outputType *string) error {
+	typeOptions := make([]huh.Option[string], 0)
+	for _, t := range build.ListOutputTypes() {
+		typeOptions = append(typeOptions, huh.NewOption(t, t))
+	}
+
+	form := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Select output type").
+				Description("What type of disk image to create?").
+				Options(typeOptions...).
+				Value(outputType),
+
+			huh.NewInput().
+				Title("Image reference").
+				Description("Container image to convert (leave empty for local build)").
+				Value(&diskImage),
+
+			huh.NewInput().
+				Title("Output directory").
+				Description("Where to save the disk image").
+				Placeholder("./output").
+				Value(&diskOutputDir),
+		),
+	)
+
+	return form.Run()
+}

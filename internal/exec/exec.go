@@ -1,0 +1,254 @@
+// Package exec provides command execution utilities for finctl
+package exec
+
+import (
+	"bytes"
+	"context"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"strings"
+	"time"
+
+	"github.com/charmbracelet/log"
+)
+
+// Result holds the result of a command execution
+type Result struct {
+	Command  string
+	Args     []string
+	ExitCode int
+	Stdout   string
+	Stderr   string
+	Duration time.Duration
+	Err      error
+}
+
+// Options configures command execution
+type Options struct {
+	Dir         string
+	Env         []string
+	Timeout     time.Duration
+	Stdin       io.Reader
+	StreamStdio bool // Stream stdout/stderr to terminal in real-time
+	Logger      *log.Logger
+}
+
+// DefaultOptions returns default execution options
+func DefaultOptions() Options {
+	return Options{
+		Timeout:     30 * time.Minute,
+		StreamStdio: false,
+	}
+}
+
+// Run executes a command and returns the result
+func Run(ctx context.Context, name string, args []string, opts Options) *Result {
+	start := time.Now()
+
+	result := &Result{
+		Command: name,
+		Args:    args,
+	}
+
+	// Apply timeout
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
+	cmd := exec.CommandContext(ctx, name, args...)
+
+	// Set working directory
+	if opts.Dir != "" {
+		cmd.Dir = opts.Dir
+	}
+
+	// Set environment
+	if len(opts.Env) > 0 {
+		cmd.Env = append(os.Environ(), opts.Env...)
+	}
+
+	// Set stdin
+	if opts.Stdin != nil {
+		cmd.Stdin = opts.Stdin
+	}
+
+	var stdout, stderr bytes.Buffer
+
+	if opts.StreamStdio {
+		// Stream to terminal AND capture
+		cmd.Stdout = io.MultiWriter(os.Stdout, &stdout)
+		cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+	} else {
+		cmd.Stdout = &stdout
+		cmd.Stderr = &stderr
+	}
+
+	if opts.Logger != nil {
+		opts.Logger.Debug("executing command", "cmd", name, "args", args)
+	}
+
+	err := cmd.Run()
+	result.Duration = time.Since(start)
+	result.Stdout = stdout.String()
+	result.Stderr = stderr.String()
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		} else {
+			result.ExitCode = -1
+		}
+		result.Err = err
+	}
+
+	if opts.Logger != nil {
+		if err != nil {
+			opts.Logger.Debug("command failed",
+				"cmd", name,
+				"exit_code", result.ExitCode,
+				"duration", result.Duration,
+			)
+		} else {
+			opts.Logger.Debug("command succeeded",
+				"cmd", name,
+				"duration", result.Duration,
+			)
+		}
+	}
+
+	return result
+}
+
+// RunSimple runs a command with default options
+func RunSimple(ctx context.Context, name string, args ...string) *Result {
+	return Run(ctx, name, args, DefaultOptions())
+}
+
+// RunInDir runs a command in a specific directory
+func RunInDir(ctx context.Context, dir string, name string, args ...string) *Result {
+	opts := DefaultOptions()
+	opts.Dir = dir
+	return Run(ctx, name, args, opts)
+}
+
+// RunStreaming runs a command with output streaming to terminal
+func RunStreaming(ctx context.Context, name string, args []string, opts Options) *Result {
+	opts.StreamStdio = true
+	return Run(ctx, name, args, opts)
+}
+
+// Just runs a just command
+func Just(ctx context.Context, dir string, recipe string, args ...string) *Result {
+	allArgs := append([]string{recipe}, args...)
+	opts := DefaultOptions()
+	opts.Dir = dir
+	opts.StreamStdio = true
+	return Run(ctx, "just", allArgs, opts)
+}
+
+// Podman runs a podman command
+func Podman(ctx context.Context, args ...string) *Result {
+	return RunSimple(ctx, "podman", args...)
+}
+
+// PodmanBuild runs podman build with streaming output
+func PodmanBuild(ctx context.Context, dir string, args []string) *Result {
+	allArgs := append([]string{"build"}, args...)
+	opts := DefaultOptions()
+	opts.Dir = dir
+	opts.StreamStdio = true
+	opts.Timeout = 60 * time.Minute
+	return Run(ctx, "podman", allArgs, opts)
+}
+
+// PodmanPush pushes an image to a registry
+func PodmanPush(ctx context.Context, image string) *Result {
+	opts := DefaultOptions()
+	opts.StreamStdio = true
+	return Run(ctx, "podman", []string{"push", image}, opts)
+}
+
+// Git runs a git command
+func Git(ctx context.Context, dir string, args ...string) *Result {
+	opts := DefaultOptions()
+	opts.Dir = dir
+	return Run(ctx, "git", args, opts)
+}
+
+// Cosign runs a cosign command
+func Cosign(ctx context.Context, args ...string) *Result {
+	return RunSimple(ctx, "cosign", args...)
+}
+
+// Syft runs a syft command
+func Syft(ctx context.Context, args ...string) *Result {
+	return RunSimple(ctx, "syft", args...)
+}
+
+// BootcImageBuilder runs bootc-image-builder in a container
+func BootcImageBuilder(ctx context.Context, image string, outputType string, configFile string, outputDir string) *Result {
+	args := []string{
+		"run",
+		"--rm",
+		"--privileged",
+		"--pull=newer",
+		"--security-opt", "label=type:unconfined_t",
+		"-v", outputDir + ":/output",
+	}
+
+	if configFile != "" {
+		args = append(args, "-v", configFile+":/config.toml:ro")
+	}
+
+	args = append(args,
+		"quay.io/centos-bootc/bootc-image-builder:latest",
+		"--type", outputType,
+		"--local",
+		image,
+	)
+
+	opts := DefaultOptions()
+	opts.StreamStdio = true
+	opts.Timeout = 60 * time.Minute
+
+	return Run(ctx, "podman", args, opts)
+}
+
+// CheckCommand checks if a command is available
+func CheckCommand(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
+}
+
+// RequireCommands checks if all required commands are available
+func RequireCommands(commands ...string) error {
+	missing := []string{}
+	for _, cmd := range commands {
+		if !CheckCommand(cmd) {
+			missing = append(missing, cmd)
+		}
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("missing required commands: %s", strings.Join(missing, ", "))
+	}
+	return nil
+}
+
+// FormatCommand formats a command for display
+func FormatCommand(name string, args []string) string {
+	parts := append([]string{name}, args...)
+	return strings.Join(parts, " ")
+}
+
+// LastNLines returns the last n lines of a string
+func LastNLines(s string, n int) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
+}

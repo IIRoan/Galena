@@ -2,3 +2,12 @@ cosign.key
 _build_*
 output
 _build-*/**
+
+# Go build artifacts
+finctl
+finctl-*
+build-manifest.json
+sbom.spdx.json
+
+# Go module cache (if using vendor)
+vendor/

@@ -1,0 +1,94 @@
+---
+name: Build disk images
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_type:
+        description: 'Disk image type to build'
+        required: true
+        default: 'qcow2'
+        type: choice
+        options:
+          - qcow2
+          - raw
+          - iso
+          - vmdk
+      image_ref:
+        description: 'Container image reference (leave empty to use latest stable)'
+        required: false
+        type: string
+
+env:
+  IMAGE_NAME: "${{ github.event.repository.name }}"
+  IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
+  GO_VERSION: "1.23"
+
+jobs:
+  build-disk:
+    name: Build ${{ inputs.image_type }} image
+    runs-on: ubuntu-24.04
+
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Prepare environment
+        run: |
+          echo "IMAGE_REGISTRY=${IMAGE_REGISTRY,,}" >> ${GITHUB_ENV}
+          echo "IMAGE_NAME=${IMAGE_NAME,,}" >> ${GITHUB_ENV}
+
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Setup Go
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Build finctl
+        run: go build -o finctl ./cmd/finctl/
+
+      - name: Maximize build space
+        uses: ublue-os/remove-unwanted-software@517622d6452028f266b7ba4cc9a123b5f58a6b53 # v7
+        with:
+          remove-codeql: true
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Determine image reference
+        id: image
+        run: |
+          if [[ -n "${{ inputs.image_ref }}" ]]; then
+            echo "ref=${{ inputs.image_ref }}" >> $GITHUB_OUTPUT
+          else
+            # Use the latest stable image from the registry
+            IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:stable"
+            echo "ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Pull container image
+        run: podman pull ${{ steps.image.outputs.ref }}
+
+      - name: Build disk image
+        run: |
+          mkdir -p output
+
+          ./finctl disk ${{ inputs.image_type }} \
+            --image ${{ steps.image.outputs.ref }} \
+            --output ./output
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ env.IMAGE_NAME }}-${{ inputs.image_type }}
+          path: output/*
+          compression-level: 0  # Disk images are already compressed or don't compress well
+          retention-days: 7
