@@ -81,10 +81,12 @@ jobs:
             -X github.com/finpilot/finctl/cmd/finctl/cmd.Version=${{ github.sha }} \
             -X github.com/finpilot/finctl/cmd/finctl/cmd.Commit=${{ github.sha }} \
             -X github.com/finpilot/finctl/cmd/finctl/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o finctl ./cmd/finctl/
+            -o ${{ github.workspace }}/finctl ./cmd/finctl/
+          chmod +x ${{ github.workspace }}/finctl
+          ${{ github.workspace }}/finctl version
 
       - name: Setup CI environment
-        run: ./finctl ci setup
+        run: ${{ github.workspace }}/finctl ci setup
 
       # SBOM (OPTIONAL): Software Bill of Materials generation using Syft
       # Creates a detailed inventory of all software components in the image for supply chain security.
@@ -125,7 +127,7 @@ jobs:
           fi
 
           # Run the build
-          ./finctl ci build \
+          ${{ github.workspace }}/finctl ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
             $PUSH_FLAG
 

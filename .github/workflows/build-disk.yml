@@ -49,7 +49,9 @@ jobs:
           cache: true
 
       - name: Build finctl
-        run: go build -o finctl ./cmd/finctl/
+        run: |
+          go build -o ${{ github.workspace }}/finctl ./cmd/finctl/
+          chmod +x ${{ github.workspace }}/finctl
 
       - name: Maximize build space
         uses: ublue-os/remove-unwanted-software@517622d6452028f266b7ba4cc9a123b5f58a6b53 # v7
@@ -81,7 +83,7 @@ jobs:
         run: |
           mkdir -p output
 
-          ./finctl disk ${{ inputs.image_type }} \
+          ${{ github.workspace }}/finctl disk ${{ inputs.image_type }} \
             --image ${{ steps.image.outputs.ref }} \
             --output ./output
 
