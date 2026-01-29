@@ -18,6 +18,11 @@ on:
         description: 'Container image reference (leave empty to use latest stable)'
         required: false
         type: string
+      upload_to_r2:
+        description: 'Upload to Cloudflare R2'
+        required: false
+        default: true
+        type: boolean
 
 env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
@@ -86,6 +91,60 @@ jobs:
           ${{ github.workspace }}/finctl disk ${{ inputs.image_type }} \
             --image ${{ steps.image.outputs.ref }} \
             --output ./output
+
+      - name: Setup rclone
+        if: inputs.upload_to_r2
+        run: |
+          curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Upload to Cloudflare R2
+        if: inputs.upload_to_r2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME }}
+          R2_PUBLIC_DOMAIN: ${{ secrets.R2_PUBLIC_DOMAIN }}
+        run: |
+          # Generate rclone config from template by substituting secrets
+          mkdir -p ~/.config/rclone
+          envsubst < iso/rclone/cloudflare-r2.conf > ~/.config/rclone/rclone.conf
+
+          DATE_TAG=$(date +%Y%m%d)
+
+          for file in output/*; do
+            FILENAME=$(basename "$file")
+            EXTENSION="${FILENAME##*.}"
+            BASENAME="${FILENAME%.*}"
+
+            # Upload with date-tagged name
+            rclone copy "$file" "cloudflare-r2:${R2_BUCKET_NAME}/" \
+              --copy-links \
+              --progress
+
+            # Rename to date-tagged version
+            rclone moveto "cloudflare-r2:${R2_BUCKET_NAME}/${FILENAME}" \
+              "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-${DATE_TAG}.${EXTENSION}"
+
+            # Copy as latest
+            rclone copyto "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-${DATE_TAG}.${EXTENSION}" \
+              "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-latest.${EXTENSION}"
+
+            echo "Uploaded: ${BASENAME}-${DATE_TAG}.${EXTENSION}"
+            echo "Uploaded: ${BASENAME}-latest.${EXTENSION}"
+          done
+
+          # Output public URL if configured
+          if [[ -n "${R2_PUBLIC_DOMAIN}" ]]; then
+            echo "### R2 Downloads" >> $GITHUB_STEP_SUMMARY
+            for file in output/*; do
+              FILENAME=$(basename "$file")
+              EXTENSION="${FILENAME##*.}"
+              BASENAME="${FILENAME%.*}"
+              echo "- [${BASENAME}-${DATE_TAG}.${EXTENSION}](https://${R2_PUBLIC_DOMAIN}/${BASENAME}-${DATE_TAG}.${EXTENSION})" >> $GITHUB_STEP_SUMMARY
+              echo "- [${BASENAME}-latest.${EXTENSION}](https://${R2_PUBLIC_DOMAIN}/${BASENAME}-latest.${EXTENSION})" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
 
       - name: Upload disk image
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
