@@ -3,9 +3,9 @@ _build_*
 output
 _build-*/**
 
-# Go build artifacts
-finctl
-finctl-*
+# Go build artifacts (binaries in root only)
+/finctl
+/finctl-*
 build-manifest.json
 sbom.spdx.json
 
