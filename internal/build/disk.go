@@ -89,13 +89,34 @@ func (d *DiskBuilder) Build(ctx context.Context, opts DiskOptions) (string, erro
 		"output", opts.OutputDir,
 	)
 
+	// Pull the image first (bootc-image-builder no longer pulls automatically)
+	d.logger.Info("pulling container image", "image", opts.ImageRef)
+	pullResult := exec.Run(ctx, "podman", []string{"pull", opts.ImageRef}, exec.DefaultOptions())
+	if pullResult.Err != nil {
+		d.logger.Error("failed to pull image",
+			"exit_code", pullResult.ExitCode,
+			"stderr", exec.LastNLines(pullResult.Stderr, 10),
+		)
+		return "", fmt.Errorf("pulling image: %w", pullResult.Err)
+	}
+
 	// Prepare config file path
 	configFile := opts.ConfigFile
 	if configFile == "" {
-		// Try to find default config
-		defaultConfigs := []string{
-			filepath.Join(d.rootDir, "iso", "disk.toml"),
-			filepath.Join(d.rootDir, "disk_config", "image.toml"),
+		// Select default config based on output type
+		var defaultConfigs []string
+		if opts.OutputType == "anaconda-iso" || opts.OutputType == "bootc-installer" {
+			// Interactive installers use iso.toml
+			defaultConfigs = []string{
+				filepath.Join(d.rootDir, "iso", "iso.toml"),
+				filepath.Join(d.rootDir, "iso", "disk.toml"),
+			}
+		} else {
+			// Direct disk images use disk.toml
+			defaultConfigs = []string{
+				filepath.Join(d.rootDir, "iso", "disk.toml"),
+				filepath.Join(d.rootDir, "disk_config", "image.toml"),
+			}
 		}
 		for _, cfg := range defaultConfigs {
 			if _, err := os.Stat(cfg); err == nil {
@@ -178,9 +199,6 @@ func (d *DiskBuilder) buildBIBArgs(opts DiskOptions, configFile string) []string
 	if opts.RootFSType != "" {
 		args = append(args, "--rootfs", opts.RootFSType)
 	}
-
-	// Use local image
-	args = append(args, "--local")
 
 	// Add config if present
 	if configFile != "" {

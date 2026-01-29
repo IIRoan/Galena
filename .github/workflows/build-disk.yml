@@ -7,15 +7,16 @@ on:
       image_type:
         description: 'Disk image type to build'
         required: true
-        default: 'qcow2'
+        default: 'anaconda-iso'
         type: choice
         options:
+          - anaconda-iso
+          - iso
           - qcow2
           - raw
-          - iso
           - vmdk
       image_ref:
-        description: 'Container image reference (leave empty to use latest stable)'
+        description: 'Container image reference (leave empty for default)'
         required: false
         type: string
       upload_to_r2:
@@ -27,6 +28,7 @@ on:
 env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
+  DEFAULT_TAG: "main"
   GO_VERSION: "1.23"
 
 jobs:
@@ -76,21 +78,21 @@ jobs:
           if [[ -n "${{ inputs.image_ref }}" ]]; then
             echo "ref=${{ inputs.image_ref }}" >> $GITHUB_OUTPUT
           else
-            # Use the latest stable image from the registry
-            IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:stable"
+            IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${{ env.DEFAULT_TAG }}"
             echo "ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
           fi
-
-      - name: Pull container image
-        run: podman pull ${{ steps.image.outputs.ref }}
 
       - name: Build disk image
         run: |
           mkdir -p output
 
-          ${{ github.workspace }}/finctl disk ${{ inputs.image_type }} \
+          # Run with sudo - bootc-image-builder requires rootful podman
+          sudo ${{ github.workspace }}/finctl disk ${{ inputs.image_type }} \
             --image ${{ steps.image.outputs.ref }} \
             --output ./output
+
+          # Fix permissions for upload steps
+          sudo chown -R $USER:$USER output/
 
       - name: Setup rclone
         if: inputs.upload_to_r2
@@ -112,23 +114,19 @@ jobs:
 
           DATE_TAG=$(date +%Y%m%d)
 
-          for file in output/*; do
+          for file in output/**/*; do
+            [[ -f "$file" ]] || continue
             FILENAME=$(basename "$file")
             EXTENSION="${FILENAME##*.}"
             BASENAME="${FILENAME%.*}"
 
             # Upload with date-tagged name
-            rclone copy "$file" "cloudflare-r2:${R2_BUCKET_NAME}/" \
-              --copy-links \
+            rclone copyto "$file" "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-${DATE_TAG}.${EXTENSION}" \
               --progress
 
-            # Rename to date-tagged version
-            rclone moveto "cloudflare-r2:${R2_BUCKET_NAME}/${FILENAME}" \
-              "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-${DATE_TAG}.${EXTENSION}"
-
             # Copy as latest
-            rclone copyto "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-${DATE_TAG}.${EXTENSION}" \
-              "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-latest.${EXTENSION}"
+            rclone copyto "$file" "cloudflare-r2:${R2_BUCKET_NAME}/${BASENAME}-latest.${EXTENSION}" \
+              --progress
 
             echo "Uploaded: ${BASENAME}-${DATE_TAG}.${EXTENSION}"
             echo "Uploaded: ${BASENAME}-latest.${EXTENSION}"
@@ -137,7 +135,8 @@ jobs:
           # Output public URL if configured
           if [[ -n "${R2_PUBLIC_DOMAIN}" ]]; then
             echo "### R2 Downloads" >> $GITHUB_STEP_SUMMARY
-            for file in output/*; do
+            for file in output/**/*; do
+              [[ -f "$file" ]] || continue
               FILENAME=$(basename "$file")
               EXTENSION="${FILENAME##*.}"
               BASENAME="${FILENAME%.*}"
@@ -146,10 +145,10 @@ jobs:
             done
           fi
 
-      - name: Upload disk image
+      - name: Upload disk image artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ env.IMAGE_NAME }}-${{ inputs.image_type }}
-          path: output/*
-          compression-level: 0  # Disk images are already compressed or don't compress well
+          path: output/
+          compression-level: 0
           retention-days: 7

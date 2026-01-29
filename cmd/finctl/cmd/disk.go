@@ -92,12 +92,13 @@ func runDisk(cmd *cobra.Command, args []string) error {
 		imageRef = cfg.ImageRef("main", "latest")
 	}
 
-	opts := build.DiskOptions{
-		ImageRef:   imageRef,
-		OutputType: outputType,
-		OutputDir:  diskOutputDir,
-		ConfigFile: diskConfigFile,
-		RootFSType: diskRootFS,
+	opts := build.DefaultDiskOptions()
+	opts.ImageRef = imageRef
+	opts.OutputType = outputType
+	opts.OutputDir = diskOutputDir
+	opts.ConfigFile = diskConfigFile
+	if diskRootFS != "" {
+		opts.RootFSType = diskRootFS
 	}
 
 	outputPath, err := diskBuilder.Build(ctx, opts)
