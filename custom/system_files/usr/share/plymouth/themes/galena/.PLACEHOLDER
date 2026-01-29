@@ -1,0 +1,8 @@
+Place your Plymouth boot splash theme here.
+
+Required files for a basic spinner theme:
+  - galena.plymouth - Theme configuration
+  - splash.png - Background image (1920x1080 or match target resolution)
+  - throbber-*.png - Animation frames (optional)
+
+See /usr/share/plymouth/themes/ on a running system for examples.
