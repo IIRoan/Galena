@@ -44,8 +44,8 @@ COPY custom /custom
 COPY --from=ghcr.io/projectbluefin/common:latest /system_files /oci/common
 COPY --from=ghcr.io/ublue-os/brew:latest /system_files /oci/brew
 
-# Base Image - GNOME included
-FROM ghcr.io/ublue-os/silverblue-main:latest
+# Base Image - Bluefin Developer Experience (GNOME + dev tools)
+FROM ghcr.io/ublue-os/bluefin-dx:stable
 
 ## Alternative base images, no desktop included (uncomment to use):
 # FROM ghcr.io/ublue-os/base-main:latest    
@@ -80,7 +80,9 @@ RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=cache,dst=/var/log \
     --mount=type=tmpfs,dst=/tmp \
-    /ctx/build/10-build.sh
+    for script in /ctx/build/[0-9][0-9]-*.sh; do \
+        [ -x "$script" ] && "$script"; \
+    done
     
 ### LINTING
 ## Verify final image and contents are correct.
