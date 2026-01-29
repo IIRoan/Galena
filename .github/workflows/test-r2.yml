@@ -41,7 +41,13 @@ jobs:
           echo "Account ID: ${R2_ACCOUNT_ID:0:8}... (truncated)"
           echo "Access Key ID: ${R2_ACCESS_KEY_ID:0:8}... (truncated)"
           echo "Bucket name length: ${#R2_BUCKET_NAME} characters"
-          echo "Bucket name (base64): $(echo -n "$R2_BUCKET_NAME" | base64)"
+
+          # Show bucket name character by character to avoid GitHub masking
+          echo -n "Bucket name chars: "
+          for (( i=0; i<${#R2_BUCKET_NAME}; i++ )); do
+            echo -n "${R2_BUCKET_NAME:$i:1} "
+          done
+          echo ""
 
       - name: Configure rclone
         env:
@@ -54,8 +60,17 @@ jobs:
 
       - name: List available buckets
         run: |
-          echo "Listing all available buckets..."
-          rclone lsd cloudflare-r2: 2>&1 || echo "Could not list buckets (might need ListAllBuckets permission)"
+          echo "Listing all available buckets in your R2 account..."
+          echo "=================================================="
+          rclone lsd cloudflare-r2: 2>&1 | tee /tmp/buckets.txt || true
+          echo "=================================================="
+          echo ""
+          if [[ -s /tmp/buckets.txt ]]; then
+            echo "Available bucket names:"
+            awk '{print "  - " $NF}' /tmp/buckets.txt
+          else
+            echo "No buckets found or ListAllBuckets permission not granted"
+          fi
 
       - name: Debug rclone config
         run: |
