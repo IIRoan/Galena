@@ -2,6 +2,7 @@
 package ui
 
 import (
+	"fmt"
 	"github.com/charmbracelet/lipgloss"
 )
 
@@ -89,17 +90,63 @@ var (
 	StatusPending = lipgloss.NewStyle().
 			Foreground(Muted).
 			SetString("○")
+
+	// Prompt styles
+	PromptTitle = lipgloss.NewStyle().
+			Foreground(Primary).
+			Bold(true).
+			MarginBottom(1)
+
+	PromptDescription = lipgloss.NewStyle().
+				Foreground(Muted).
+				Italic(true).
+				MarginBottom(1)
+
+	// Modern UI elements
+	GradientPrimary = lipgloss.AdaptiveColor{Light: "#7C3AED", Dark: "#A78BFA"}
+	GradientSecondary = lipgloss.AdaptiveColor{Light: "#06B6D4", Dark: "#22D3EE"}
+
+	WizardTitle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(Primary).
+			Padding(0, 2).
+			Bold(true).
+			MarginTop(2).
+			MarginBottom(0)
+
+	WizardStep = lipgloss.NewStyle().
+			Foreground(Secondary).
+			Bold(true).
+			MarginTop(1).
+			MarginBottom(0)
+
+	WizardDescription = lipgloss.NewStyle().
+				Foreground(Muted).
+				MarginTop(0).
+				MarginBottom(0)
+
+	HeaderStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FFFFFF")).
+			Background(Primary).
+			Padding(0, 1).
+			Bold(true).
+			Width(60).
+			Align(lipgloss.Center)
+
+	AppStyle = lipgloss.NewStyle().
+			Padding(1, 2).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(Primary)
 )
 
 // Banner returns the finctl ASCII banner
 func Banner() string {
 	banner := `
- _____ _            _   _
-|  ___(_)_ __   ___| |_| |
-| |_  | | '_ \ / __| __| |
-|  _| | | | | | (__| |_| |
-|_|   |_|_| |_|\___|\__|_|
-`
+  ▄▀▀▀▀▄   ▄▀▀█▄   ▄▀▀        ▄▀▀▀▀▄  ▄▀▀▄ █  ▄▀▀█▄  
+ █      █ █  █ ▀▄ █   █      █      █ █  █ ▄ █  █ ▀▄ 
+ █      █ █  █  █ ▐  █       █      █ █  █   █  █  █ 
+ ▀▄    ▄▀ █   ▀ ▄    █   ▄   ▀▄    ▄▀ █  █   █   ▀ ▄ 
+   ▀▀▀▀   ▀      ▀▀▀▀▀▀▀▀      ▀▀▀▀   ▀ ▀    ▀      `
 	return lipgloss.NewStyle().
 		Foreground(Primary).
 		Bold(true).
@@ -130,11 +177,8 @@ func padInt(n, width int) string {
 	for i := 0; i < width; i++ {
 		s += " "
 	}
-	ns := s + string(rune('0'+n%10))
 	if n >= 10 {
-		ns = string(rune('0'+n/10)) + string(rune('0'+n%10))
-	} else {
-		ns = " " + string(rune('0'+n))
+		return fmt.Sprintf("%02d", n)
 	}
-	return ns
+	return fmt.Sprintf("%02d", n)
 }

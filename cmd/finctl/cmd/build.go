@@ -76,11 +76,14 @@ func runBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("finding project root: %w", err)
 	}
 
-	// Interactive mode
-	if buildInteractive {
-		if err := promptBuildOptions(); err != nil {
+	// Interactive mode: if no arguments/flags or specifically requested
+	isInteractive := buildInteractive || (len(args) == 0 && !cmd.Flags().Changed("variant") && !cmd.Flags().Changed("tag") && !cmd.Flags().Changed("just"))
+
+	if isInteractive {
+		if err := runInteractiveFlow(ctx, rootDir); err != nil {
 			return err
 		}
+		return nil
 	}
 
 	builder := build.NewBuilder(cfg, rootDir, logger)
@@ -131,7 +134,34 @@ func runBuild(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func promptBuildOptions() error {
+func runInteractiveFlow(ctx context.Context, rootDir string) error {
+	var buildType string
+	
+	fmt.Println(ui.Banner())
+	fmt.Println(ui.WizardTitle.Render(" BUILD WIZARD "))
+	fmt.Println(ui.WizardDescription.Render("This wizard will guide you through building your custom OS image."))
+
+	// 1. Choose Build Type
+	err := huh.NewSelect[string]().
+		Title("Artifact Type").
+		Description("What would you like to build?").
+		Options(
+			huh.NewOption("OCI Container (Local/Remote)", "container"),
+			huh.NewOption("Disk Image (VM/Bare Metal)", "disk"),
+		).
+		Value(&buildType).
+		Run()
+	if err != nil {
+		return err
+	}
+
+	if buildType == "container" {
+		return interactiveContainerBuild(ctx, rootDir)
+	}
+	return interactiveDiskBuild(ctx, rootDir)
+}
+
+func interactiveContainerBuild(ctx context.Context, rootDir string) error {
 	variants := cfg.ListVariantNames()
 	if len(variants) == 0 {
 		variants = []string{"main"}
@@ -143,31 +173,126 @@ func promptBuildOptions() error {
 	}
 
 	tagOptions := []huh.Option[string]{
-		huh.NewOption("latest", "latest"),
-		huh.NewOption("stable", "stable"),
-		huh.NewOption("beta", "beta"),
+		huh.NewOption("latest (stable development)", "latest"),
+		huh.NewOption("stable (production ready)", "stable"),
+		huh.NewOption("beta (testing)", "beta"),
 	}
 
 	form := huh.NewForm(
 		huh.NewGroup(
 			huh.NewSelect[string]().
-				Title("Select variant").
-				Description("Which image variant to build?").
+				Title("Variant").
+				Description("Target hardware/feature set").
 				Options(variantOptions...).
 				Value(&buildVariant),
 
 			huh.NewSelect[string]().
-				Title("Select tag").
-				Description("Which tag to use?").
+				Title("Tag").
+				Description("Release channel tag").
 				Options(tagOptions...).
 				Value(&buildTag),
-
+		),
+		huh.NewGroup(
 			huh.NewConfirm().
-				Title("Push to registry?").
-				Description("Push the built image to the container registry").
+				Title("Push & Distribute").
+				Description("Upload to GHCR after building?").
 				Value(&buildPush),
 		),
-	)
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Sign & Secure").
+				Description("Sign with cosign?").
+				Value(&buildSign),
+		),
+		huh.NewGroup(
+			huh.NewConfirm().
+				Title("Audit (SBOM)").
+				Description("Generate Software Bill of Materials?").
+				Value(&buildSBOM),
+		),
+	).WithTheme(huh.ThemeCharm())
 
-	return form.Run()
+	if err := form.Run(); err != nil {
+		return err
+	}
+
+	fmt.Println(ui.WizardStep.Render("▶ Building OCI Container..."))
+	
+	builder := build.NewBuilder(cfg, rootDir, logger)
+	opts := build.BuildOptions{
+		Variant:     buildVariant,
+		Tag:         buildTag,
+		Push:        buildPush,
+		Sign:        buildSign,
+		SBOM:        buildSBOM,
+		BuildNumber: buildNumber,
+	}
+
+	manifest, err := builder.Build(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(ui.SuccessStyle.Render("\n✔ Container Build Complete"))
+	fmt.Println(ui.MutedStyle.Render("Reference: " + manifest.Version.ImageRef))
+	return nil
+}
+
+func interactiveDiskBuild(ctx context.Context, rootDir string) error {
+	var outputType string
+	typeOptions := make([]huh.Option[string], 0)
+	for _, t := range build.ListOutputTypes() {
+		label := t
+		switch t {
+		case "qcow2":
+			label = "Virtual Machine (QCOW2)"
+		case "iso":
+			label = "ISO Installer (Standard)"
+		case "anaconda-iso":
+			label = "ISO Installer (Anaconda)"
+		case "raw":
+			label = "Raw Disk Image"
+		}
+		typeOptions = append(typeOptions, huh.NewOption(label, t))
+	}
+
+	err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[string]().
+				Title("Output Format").
+				Description("How do you want to deploy this image?").
+				Options(typeOptions...).
+				Value(&outputType),
+
+			huh.NewInput().
+				Title("Source Image").
+				Description("Image to convert (empty for local project)").
+				Placeholder("localhost/finpilot:latest").
+				Value(&diskImage),
+		),
+	).WithTheme(huh.ThemeCharm()).Run()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(ui.WizardStep.Render("▶ Converting to " + outputType + "..."))
+
+	diskBuilder := build.NewDiskBuilder(cfg, rootDir, logger)
+	imageRef := diskImage
+	if imageRef == "" {
+		imageRef = cfg.ImageRef("main", "latest")
+	}
+
+	opts := build.DefaultDiskOptions()
+	opts.ImageRef = imageRef
+	opts.OutputType = outputType
+	
+	outputPath, err := diskBuilder.Build(ctx, opts)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(ui.SuccessStyle.Render("\n✔ Disk Build Complete"))
+	fmt.Println(ui.MutedStyle.Render("Output: " + outputPath))
+	return nil
 }

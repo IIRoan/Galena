@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/charmbracelet/log"
@@ -89,15 +90,22 @@ func (d *DiskBuilder) Build(ctx context.Context, opts DiskOptions) (string, erro
 		"output", opts.OutputDir,
 	)
 
-	// Pull the image first (bootc-image-builder no longer pulls automatically)
-	d.logger.Info("pulling container image", "image", opts.ImageRef)
-	pullResult := exec.Run(ctx, "podman", []string{"pull", opts.ImageRef}, exec.DefaultOptions())
-	if pullResult.Err != nil {
-		d.logger.Error("failed to pull image",
-			"exit_code", pullResult.ExitCode,
-			"stderr", exec.LastNLines(pullResult.Stderr, 10),
-		)
-		return "", fmt.Errorf("pulling image: %w", pullResult.Err)
+	// Check if image is local (already in container storage)
+	isLocal := strings.HasPrefix(opts.ImageRef, "localhost/") || !strings.Contains(opts.ImageRef, "/")
+
+	if isLocal {
+		d.logger.Info("using local container image", "image", opts.ImageRef)
+		// Skip pull for local images - they're already in storage
+	} else {
+		d.logger.Info("pulling container image", "image", opts.ImageRef)
+		pullResult := exec.Run(ctx, "podman", []string{"pull", opts.ImageRef}, exec.DefaultOptions())
+		if pullResult.Err != nil {
+			d.logger.Error("failed to pull image",
+				"exit_code", pullResult.ExitCode,
+				"stderr", exec.LastNLines(pullResult.Stderr, 10),
+			)
+			return "", fmt.Errorf("pulling image: %w", pullResult.Err)
+		}
 	}
 
 	// Prepare config file path
@@ -177,8 +185,8 @@ func (d *DiskBuilder) buildBIBArgs(opts DiskOptions, configFile string) []string
 	// Security options for SELinux
 	args = append(args, "--security-opt", "label=type:unconfined_t")
 
-	// Mount output directory
-	args = append(args, "-v", opts.OutputDir+":/output")
+	// Network host for local resolution
+	args = append(args, "--net=host")
 
 	// Mount config file if provided
 	if configFile != "" {
@@ -190,11 +198,18 @@ func (d *DiskBuilder) buildBIBArgs(opts DiskOptions, configFile string) []string
 		"-v", "/var/lib/containers/storage:/var/lib/containers/storage",
 	)
 
+	// Mount output directory
+	args = append(args, "-v", opts.OutputDir+":/output")
+
 	// The bootc-image-builder image
 	args = append(args, "quay.io/centos-bootc/bootc-image-builder:latest")
 
 	// BIB arguments
 	args = append(args, "--type", opts.OutputType)
+
+	// Align with Justfile parameters
+	args = append(args, "--use-librepo=True")
+	args = append(args, "--rootfs=btrfs")
 
 	if opts.RootFSType != "" {
 		args = append(args, "--rootfs", opts.RootFSType)
@@ -205,7 +220,7 @@ func (d *DiskBuilder) buildBIBArgs(opts DiskOptions, configFile string) []string
 		args = append(args, "--config", "/config.toml")
 	}
 
-	// The source image
+	// The source image - pass directly (including localhost/ for local builds)
 	args = append(args, opts.ImageRef)
 
 	return args

@@ -2,9 +2,11 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"time"
 
+	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
@@ -34,10 +36,7 @@ var rootCmd = &cobra.Command{
 	Short: "Build and manage OCI-native OS images",
 	Long: ui.Banner() + `
 finctl is a CLI tool for building, testing, and deploying
-OCI-native bootable operating system images.
-
-It provides a smooth developer and CI/CD experience for creating
-Chromebook-like reliability with developer-oriented flexibility.`,
+OCI-native bootable operating system images.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
@@ -60,6 +59,51 @@ Chromebook-like reliability with developer-oriented flexibility.`,
 
 		return nil
 	},
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return runRootTUI()
+		}
+		return cmd.Help()
+	},
+}
+
+func runRootTUI() error {
+	fmt.Println(ui.Banner())
+	fmt.Println(ui.HeaderStyle.Render(" MAIN MENU "))
+	fmt.Println()
+
+	var choice string
+	err := huh.NewSelect[string]().
+		Title("Control Plane").
+		Description("What would you like to do?").
+		Options(
+			huh.NewOption("Build (Interactive Wizard)", "build"),
+			huh.NewOption("Status (System Check)", "status"),
+			huh.NewOption("Init (Setup Project)", "init"),
+			huh.NewOption("Clean (Purge Build Files)", "clean"),
+			huh.NewOption("Exit", "exit"),
+		).
+		Value(&choice).
+		Run()
+
+	if err != nil {
+		return err
+	}
+
+	switch choice {
+	case "build":
+		return buildCmd.RunE(buildCmd, []string{})
+	case "status":
+		return statusCmd.RunE(statusCmd, []string{})
+	case "init":
+		return initCmd.RunE(initCmd, []string{})
+	case "clean":
+		return cleanCmd.RunE(cleanCmd, []string{})
+	case "exit":
+		return nil
+	}
+
+	return nil
 }
 
 // Execute runs the root command

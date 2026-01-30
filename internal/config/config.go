@@ -152,10 +152,13 @@ func (c *Config) ImageRef(variant, tag string) string {
 		name = name + "-" + variant
 	}
 
+	// For pushes and remote references, registry and repository must be set
 	if c.Registry != "" && c.Repository != "" {
 		return fmt.Sprintf("%s/%s/%s:%s", c.Registry, c.Repository, name, tag)
 	}
-	return fmt.Sprintf("%s:%s", name, tag)
+
+	// For local-only builds without registry/repository set, default to localhost/
+	return fmt.Sprintf("localhost/%s:%s", name, tag)
 }
 
 // ComputeVersion computes the version string based on the scheme
