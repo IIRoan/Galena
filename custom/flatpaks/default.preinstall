@@ -10,18 +10,36 @@ Branch=stable
 [Flatpak Preinstall app.zen_browser.zen]
 Branch=stable
 
+[Flatpak Preinstall com.brave.Browser]
+Branch=stable
+
+[Flatpak Preinstall com.google.Chrome]
+Branch=stable
+
+[Flatpak Preinstall org.chromium.Chromium]
+Branch=stable
+
 
 # GNOME Core Applications
 [Flatpak Preinstall org.gnome.Calculator]
 Branch=stable
 
+[Flatpak Preinstall org.gnome.Calendar]
+Branch=stable
+
 [Flatpak Preinstall org.gnome.Characters]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.ColorViewer]
 Branch=stable
 
 [Flatpak Preinstall org.gnome.Connections]
 Branch=stable
 
 [Flatpak Preinstall org.gnome.Contacts]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.DejaDup]
 Branch=stable
 
 [Flatpak Preinstall org.gnome.FileRoller]
@@ -42,7 +60,16 @@ Branch=stable
 [Flatpak Preinstall org.gnome.Papers]
 Branch=stable
 
+[Flatpak Preinstall org.gnome.PowerStats]
+Branch=stable
+
 [Flatpak Preinstall org.gnome.SimpleScan]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.Snapshot]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.SoundRecorder]
 Branch=stable
 
 [Flatpak Preinstall org.gnome.TextEditor]
@@ -58,6 +85,12 @@ Branch=stable
 Branch=stable
 
 [Flatpak Preinstall org.gnome.font-viewer]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.glabels-3]
+Branch=stable
+
+[Flatpak Preinstall org.gnome.World.PikaBackup]
 Branch=stable
 
 # Graphics & Media
@@ -86,6 +119,15 @@ Branch=stable
 [Flatpak Preinstall io.gitlab.adhami3310.Impression]
 Branch=stable
 
+[Flatpak Preinstall it.mijorus.gearlever]
+Branch=stable
+
+[Flatpak Preinstall io.github.getnf.embellish]
+Branch=stable
+
+[Flatpak Preinstall me.spaceinbox.actioneer]
+Branch=stable
+
 # Universal Blue Specific
 [Flatpak Preinstall com.ranfdev.DistroShelf]
 Branch=stable
@@ -93,6 +135,10 @@ Branch=stable
 [Flatpak Preinstall io.github.kolunmi.Bazaar]
 Branch=stable
 
+[Flatpak Preinstall page.tesk.Refine]
+Branch=stable
+
+# Communication & Social
 [Flatpak Preinstall dev.vencord.Vesktop]
 Branch=stable
 
@@ -102,7 +148,25 @@ Branch=stable
 [Flatpak Preinstall com.termius.Termius]
 Branch=stable
 
-[Flatpak Preinstall page.tesk.Refine]
+# Development Tools
+[Flatpak Preinstall io.beekeeperstudio.Studio]
+Branch=stable
+
+[Flatpak Preinstall io.podman_desktop.PodmanDesktop]
+Branch=stable
+
+[Flatpak Preinstall me.iepure.devtoolbox]
+Branch=stable
+
+# 3D Printing
+[Flatpak Preinstall com.bambulab.BambuStudio]
+Branch=stable
+
+# Security & Privacy
+[Flatpak Preinstall com.yubico.yubioath]
+Branch=stable
+
+[Flatpak Preinstall me.proton.Pass]
 Branch=stable
 
 # VPN & Privacy
