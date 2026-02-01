@@ -21,7 +21,7 @@ var versionCmd = &cobra.Command{
 	Short: "Print version information",
 	Long:  `Print detailed version information about finctl.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(ui.Banner())
+		ui.StartScreen("VERSION", "Build information")
 		fmt.Printf("Version:    %s\n", Version)
 		fmt.Printf("Commit:     %s\n", Commit)
 		fmt.Printf("Build Date: %s\n", BuildDate)

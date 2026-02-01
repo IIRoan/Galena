@@ -10,7 +10,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// SpinnerModel is a simple spinner for long-running operations
 type SpinnerModel struct {
 	spinner  spinner.Model
 	message  string
@@ -18,7 +17,6 @@ type SpinnerModel struct {
 	err      error
 }
 
-// NewSpinner creates a new spinner with a message
 func NewSpinner(message string) SpinnerModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
@@ -69,9 +67,7 @@ func (m SpinnerModel) View() string {
 type errMsg struct{ err error }
 type doneMsg struct{}
 
-// RunWithSpinner runs a function with a spinner
 func RunWithSpinner(message string, fn func() error) error {
-	// Check if we're in a CI environment or non-interactive terminal
 	if os.Getenv("CI") != "" || os.Getenv("GITHUB_ACTIONS") != "" {
 		fmt.Printf("⏳ %s...\n", message)
 		start := time.Now()
@@ -85,7 +81,6 @@ func RunWithSpinner(message string, fn func() error) error {
 		return err
 	}
 
-	// Interactive mode with spinner
 	m := NewSpinner(message)
 	p := tea.NewProgram(m)
 

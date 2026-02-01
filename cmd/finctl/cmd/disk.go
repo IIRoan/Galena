@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/charmbracelet/huh"
@@ -75,6 +76,9 @@ func runDisk(cmd *cobra.Command, args []string) error {
 	// Interactive mode
 	if diskInteractive {
 		if err := promptDiskOptions(&outputType); err != nil {
+			if errors.Is(err, huh.ErrUserAborted) {
+				return nil
+			}
 			return err
 		}
 	}
@@ -118,12 +122,13 @@ func runDisk(cmd *cobra.Command, args []string) error {
 }
 
 func promptDiskOptions(outputType *string) error {
+	advancedMode := ui.CurrentPreferences.Advanced
 	typeOptions := make([]huh.Option[string], 0)
 	for _, t := range build.ListOutputTypes() {
 		typeOptions = append(typeOptions, huh.NewOption(t, t))
 	}
 
-	form := huh.NewForm(
+	groups := []*huh.Group{
 		huh.NewGroup(
 			huh.NewSelect[string]().
 				Title("Select output type").
@@ -135,14 +140,38 @@ func promptDiskOptions(outputType *string) error {
 				Title("Image reference").
 				Description("Container image to convert (leave empty for local build)").
 				Value(&diskImage),
+		),
+	}
 
+	if advancedMode {
+		groups = append(groups, huh.NewGroup(
 			huh.NewInput().
 				Title("Output directory").
 				Description("Where to save the disk image").
 				Placeholder("./output").
 				Value(&diskOutputDir),
-		),
-	)
+			huh.NewInput().
+				Title("Config file").
+				Description("Optional bootc-image-builder TOML config").
+				Placeholder("iso/disk.toml").
+				Value(&diskConfigFile),
+			huh.NewSelect[string]().
+				Title("Root filesystem").
+				Description("Filesystem for the disk image").
+				Options(
+					huh.NewOption("ext4", "ext4"),
+					huh.NewOption("xfs", "xfs"),
+					huh.NewOption("btrfs", "btrfs"),
+				).
+				Value(&diskRootFS),
+			huh.NewConfirm().
+				Title("Use Justfile").
+				Description("Run disk build via existing Just recipes").
+				Value(&diskUseJust),
+		))
+	}
 
-	return form.Run()
+	form := huh.NewForm(groups...)
+
+	return form.WithTheme(ui.HuhTheme()).Run()
 }

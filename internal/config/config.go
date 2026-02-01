@@ -30,6 +30,9 @@ type Config struct {
 
 	// Dependencies (digest-pinned images)
 	Dependencies map[string]Dependency `yaml:"dependencies"`
+
+	// UI configuration
+	UI UIConfig `yaml:"ui"`
 }
 
 // BuildConfig holds build-related settings
@@ -39,6 +42,21 @@ type BuildConfig struct {
 	BuildArgs     map[string]string `yaml:"build_args"`
 	CacheMounts   []string          `yaml:"cache_mounts"`
 	Timeout       string            `yaml:"timeout"`
+	Defaults      BuildDefaults     `yaml:"defaults"`
+}
+
+// BuildDefaults holds default build flags for the CLI.
+type BuildDefaults struct {
+	Variant     string `yaml:"variant"`
+	Tag         string `yaml:"tag"`
+	BuildNumber int    `yaml:"build_number"`
+	NoCache     bool   `yaml:"no_cache"`
+	Push        bool   `yaml:"push"`
+	Sign        bool   `yaml:"sign"`
+	SBOM        bool   `yaml:"sbom"`
+	Rechunk     bool   `yaml:"rechunk"`
+	DryRun      bool   `yaml:"dry_run"`
+	UseJust     bool   `yaml:"use_just"`
 }
 
 // VersionConfig holds versioning settings
@@ -63,6 +81,15 @@ type Dependency struct {
 	Tag    string `yaml:"tag"`
 }
 
+// UIConfig holds user interface preferences.
+type UIConfig struct {
+	Theme      string `yaml:"theme"`
+	ShowBanner bool   `yaml:"show_banner"`
+	Dense      bool   `yaml:"dense"`
+	NoColor    bool   `yaml:"no_color"`
+	Advanced   bool   `yaml:"advanced"`
+}
+
 // DefaultConfig returns a sensible default configuration
 func DefaultConfig() *Config {
 	return &Config{
@@ -79,6 +106,18 @@ func DefaultConfig() *Config {
 				"/var/cache/libdnf5",
 			},
 			Timeout: "30m",
+			Defaults: BuildDefaults{
+				Variant:     "main",
+				Tag:         "latest",
+				BuildNumber: 0,
+				NoCache:     false,
+				Push:        false,
+				Sign:        false,
+				SBOM:        false,
+				Rechunk:     false,
+				DryRun:      false,
+				UseJust:     false,
+			},
 		},
 		Version: VersionConfig{
 			Scheme: "fedora.date.build",
@@ -92,6 +131,13 @@ func DefaultConfig() *Config {
 			},
 		},
 		Dependencies: make(map[string]Dependency),
+		UI: UIConfig{
+			Theme:      "aurora",
+			ShowBanner: true,
+			Dense:      false,
+			NoColor:    false,
+			Advanced:   false,
+		},
 	}
 }
 

@@ -24,31 +24,33 @@ type Builder struct {
 
 // BuildOptions configures a build
 type BuildOptions struct {
-	Variant     string
-	Tag         string
-	BuildNumber int
-	NoCache     bool
-	Push        bool
-	Sign        bool
-	SBOM        bool
-	Rechunk     bool
-	DryRun      bool
-	Timeout     time.Duration
+	Variant        string
+	Tag            string
+	BuildNumber    int
+	NoCache        bool
+	Push           bool
+	Sign           bool
+	SBOM           bool
+	Rechunk        bool
+	DryRun         bool
+	ExtraBuildArgs map[string]string
+	Timeout        time.Duration
 }
 
 // DefaultBuildOptions returns default build options
 func DefaultBuildOptions() BuildOptions {
 	return BuildOptions{
-		Variant:     "main",
-		Tag:         "latest",
-		BuildNumber: 0,
-		NoCache:     false,
-		Push:        false,
-		Sign:        false,
-		SBOM:        false,
-		Rechunk:     false,
-		DryRun:      false,
-		Timeout:     60 * time.Minute,
+		Variant:        "main",
+		Tag:            "latest",
+		BuildNumber:    0,
+		NoCache:        false,
+		Push:           false,
+		Sign:           false,
+		SBOM:           false,
+		Rechunk:        false,
+		DryRun:         false,
+		ExtraBuildArgs: nil,
+		Timeout:        60 * time.Minute,
 	}
 }
 
@@ -63,6 +65,14 @@ func NewBuilder(cfg *config.Config, rootDir string, logger *log.Logger) *Builder
 
 // Build builds an image with the given options
 func (b *Builder) Build(ctx context.Context, opts BuildOptions) (*version.BuildManifest, error) {
+	if opts.Timeout > 0 {
+		if _, hasDeadline := ctx.Deadline(); !hasDeadline {
+			var cancel context.CancelFunc
+			ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+			defer cancel()
+		}
+	}
+
 	// Validate
 	if err := b.cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
@@ -153,8 +163,16 @@ func (b *Builder) prepareBuildArgs(opts BuildOptions, ver version.Info) []string
 		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
 	}
 
-	// Add build args from config
+	mergedArgs := map[string]string{}
 	for k, v := range b.cfg.Build.BuildArgs {
+		mergedArgs[k] = v
+	}
+	for k, v := range opts.ExtraBuildArgs {
+		mergedArgs[k] = v
+	}
+
+	// Add build args from config and overrides
+	for k, v := range mergedArgs {
 		args = append(args, "--build-arg", fmt.Sprintf("%s=%s", k, v))
 	}
 

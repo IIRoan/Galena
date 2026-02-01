@@ -22,14 +22,14 @@ type DiskBuilder struct {
 
 // DiskOptions configures disk image generation
 type DiskOptions struct {
-	ImageRef    string
-	OutputType  string // qcow2, raw, iso, vmdk, ami
-	OutputDir   string
-	ConfigFile  string // Path to disk config TOML (optional)
-	RootFSType  string // ext4, xfs, btrfs
-	Timeout     time.Duration
-	Privileged  bool
-	PullNewer   bool
+	ImageRef   string
+	OutputType string // qcow2, raw, iso, vmdk, ami
+	OutputDir  string
+	ConfigFile string // Path to disk config TOML (optional)
+	RootFSType string // ext4, xfs, btrfs
+	Timeout    time.Duration
+	Privileged bool
+	PullNewer  bool
 }
 
 // DefaultDiskOptions returns default disk options
@@ -245,7 +245,7 @@ func (d *DiskBuilder) findOutputFile(outputDir, outputType string) string {
 
 	// Walk output directory
 	var found string
-	filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
+	err := filepath.Walk(outputDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil || info.IsDir() {
 			return nil
 		}
@@ -257,6 +257,9 @@ func (d *DiskBuilder) findOutputFile(outputDir, outputType string) string {
 		}
 		return nil
 	})
+	if err != nil && err != filepath.SkipAll {
+		d.logger.Warn("failed to scan output directory", "error", err)
+	}
 
 	return found
 }
