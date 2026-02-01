@@ -2,8 +2,10 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/charmbracelet/huh"
@@ -11,16 +13,17 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
+	"github.com/finpilot/finctl/internal/build"
 	"github.com/finpilot/finctl/internal/config"
 	"github.com/finpilot/finctl/internal/ui"
 )
 
 var (
 	// Global flags
-	verbose   bool
-	quiet     bool
-	noColor   bool
-	cfgFile   string
+	verbose    bool
+	quiet      bool
+	noColor    bool
+	cfgFile    string
 	projectDir string
 
 	// Global logger
@@ -78,6 +81,7 @@ func runRootTUI() error {
 		Description("What would you like to do?").
 		Options(
 			huh.NewOption("Build (Interactive Wizard)", "build"),
+			huh.NewOption("Fast Build (Local Image + ISO)", "fast-build"),
 			huh.NewOption("Status (System Check)", "status"),
 			huh.NewOption("Init (Setup Project)", "init"),
 			huh.NewOption("Clean (Purge Build Files)", "clean"),
@@ -93,6 +97,8 @@ func runRootTUI() error {
 	switch choice {
 	case "build":
 		return buildCmd.RunE(buildCmd, []string{})
+	case "fast-build":
+		return runFastBuild()
 	case "status":
 		return statusCmd.RunE(statusCmd, []string{})
 	case "init":
@@ -102,6 +108,62 @@ func runRootTUI() error {
 	case "exit":
 		return nil
 	}
+
+	return nil
+}
+
+func runFastBuild() error {
+	rootDir, err := getProjectRoot()
+	if err != nil {
+		return err
+	}
+
+	// Setup logging for this session
+	logDir := filepath.Join(rootDir, "logs")
+	_ = os.MkdirAll(logDir, 0755)
+	logFile := filepath.Join(logDir, fmt.Sprintf("fast-build-%s.log", time.Now().Format("20060102-150405")))
+
+	ctx := context.WithValue(context.Background(), "build-phase", "fast-build")
+	ctx = context.WithValue(ctx, "log-file", logFile)
+
+	fmt.Println(ui.Banner())
+	fmt.Println(ui.WizardTitle.Render(" FAST BUILD "))
+	fmt.Println(ui.WizardDescription.Render("Building local container image and standard ISO..."))
+	fmt.Println(ui.MutedStyle.Render("Logging session to: " + logFile))
+	fmt.Println()
+
+	// 1. Build Container
+	builder := build.NewBuilder(cfg, rootDir, logger)
+	buildOpts := build.DefaultBuildOptions()
+	buildOpts.Variant = "main"
+	buildOpts.Tag = "latest"
+
+	fmt.Println(ui.WizardStep.Render("▶ Step 1: Building OCI Container..."))
+	_, err = builder.Build(ctx, buildOpts)
+	if err != nil {
+		return fmt.Errorf("container build failed (check %s): %w", logFile, err)
+	}
+	fmt.Println(ui.SuccessStyle.Render("✔ Container build complete"))
+
+	// 2. Build ISO
+	fmt.Println(ui.WizardStep.Render("▶ Step 2: Generating ISO Installer..."))
+	diskBuilder := build.NewDiskBuilder(cfg, rootDir, logger)
+	diskOpts := build.DefaultDiskOptions()
+	diskOpts.ImageRef = cfg.ImageRef("main", "latest")
+	diskOpts.OutputType = "iso"
+
+	outputPath, err := diskBuilder.Build(ctx, diskOpts)
+	if err != nil {
+		return fmt.Errorf("iso build failed (check %s): %w", logFile, err)
+	}
+
+	fmt.Println(ui.SuccessStyle.Render("✔ ISO generation complete"))
+	fmt.Println()
+	fmt.Println(ui.SuccessBox.Render(fmt.Sprintf(
+		"Fast Build Finished!\n\nISO Location: %s\nLog File: %s",
+		outputPath,
+		logFile,
+	)))
 
 	return nil
 }

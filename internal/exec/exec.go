@@ -78,14 +78,30 @@ func Run(ctx context.Context, name string, args []string, opts Options) *Result 
 
 	var stdout, stderr bytes.Buffer
 
+	// Global session logging if enabled
+	var stdoutW, stderrW io.Writer
 	if opts.StreamStdio {
-		// Stream to terminal AND capture
-		cmd.Stdout = io.MultiWriter(os.Stdout, &stdout)
-		cmd.Stderr = io.MultiWriter(os.Stderr, &stderr)
+		stdoutW = io.MultiWriter(os.Stdout, &stdout)
+		stderrW = io.MultiWriter(os.Stderr, &stderr)
 	} else {
-		cmd.Stdout = &stdout
-		cmd.Stderr = &stderr
+		stdoutW = &stdout
+		stderrW = &stderr
 	}
+
+	// Capture to global log if phase is set
+	phase, _ := ctx.Value("build-phase").(string)
+	logPath, _ := ctx.Value("log-file").(string)
+	if phase != "" && logPath != "" {
+		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			defer f.Close()
+			stdoutW = io.MultiWriter(stdoutW, f)
+			stderrW = io.MultiWriter(stderrW, f)
+			fmt.Fprintf(f, "\n--- [%s] Executing: %s %s ---\n", phase, name, strings.Join(args, " "))
+		}
+	}
+
+	cmd.Stdout = stdoutW
+	cmd.Stderr = stderrW
 
 	if opts.Logger != nil {
 		opts.Logger.Debug("executing command", "cmd", name, "args", args)

@@ -2,6 +2,9 @@ _build_*
 output
 _build-*/**
 
+# Logs
+/logs/
+
 # Go build artifacts (binaries in root only)
 /finctl
 /finctl-*
