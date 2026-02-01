@@ -10,9 +10,16 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/finpilot/finctl/internal/ci"
 	"github.com/finpilot/finctl/internal/config"
 	"github.com/finpilot/finctl/internal/exec"
 	"github.com/finpilot/finctl/internal/ui"
+)
+
+var (
+	validateSkipContainerfile bool
+	validateSkipBrew          bool
+	validateSkipFlatpak       bool
 )
 
 var validateCmd = &cobra.Command{
@@ -24,14 +31,28 @@ var validateCmd = &cobra.Command{
   - Justfile syntax
   - Shell scripts (shellcheck)
   - Brewfiles
+  - Flatpak files
+
+In CI environments (GitHub Actions), output is formatted with
+log groups and annotations for better integration.
 
 Examples:
-  finctl validate`,
+  finctl validate
+  finctl validate --skip-containerfile  # Skip Containerfile validation
+  finctl validate --skip-brew           # Skip Brewfile validation
+  finctl validate --skip-flatpak        # Skip Flatpak validation`,
 	RunE: runValidate,
+}
+
+func init() {
+	validateCmd.Flags().BoolVar(&validateSkipContainerfile, "skip-containerfile", false, "Skip Containerfile validation (useful in CI without podman)")
+	validateCmd.Flags().BoolVar(&validateSkipBrew, "skip-brew", false, "Skip Brewfile validation")
+	validateCmd.Flags().BoolVar(&validateSkipFlatpak, "skip-flatpak", false, "Skip Flatpak validation")
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+	ciEnv := ci.Detect()
 
 	rootDir, err := getProjectRoot()
 	if err != nil {
@@ -44,6 +65,8 @@ func runValidate(cmd *cobra.Command, args []string) error {
 
 	ui.StartScreen("VALIDATION", "Scan configuration and build scripts")
 
+	// Configuration validation
+	ci.StartGroup("Configuration")
 	fmt.Println(ui.Title.Render("Configuration"))
 	configPath := cfgFile
 	if configPath == "" {
@@ -64,11 +87,16 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "No finctl.yaml found")
 		fmt.Printf("  %s finctl.yaml %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(not found)"))
 	}
+	ci.EndGroup()
 
+	// Containerfile validation
+	ci.StartGroup("Containerfile")
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Containerfile"))
 	containerfile := filepath.Join(rootDir, "Containerfile")
-	if _, err := os.Stat(containerfile); err == nil {
+	if validateSkipContainerfile {
+		fmt.Printf("  %s Containerfile %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(skipped)"))
+	} else if _, err := os.Stat(containerfile); err == nil {
 		result := exec.Podman(ctx, "build", "--no-cache", "-f", containerfile, "--target", "ctx", "-t", "validate-test", rootDir)
 		if result.Err != nil {
 			warnings = append(warnings, "Containerfile syntax may have issues")
@@ -80,8 +108,14 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	} else {
 		errors = append(errors, "Containerfile not found")
 		fmt.Printf("  %s Containerfile %s\n", ui.StatusError.String(), ui.MutedStyle.Render("(not found)"))
+		if ciEnv.IsCI {
+			ci.LogError("Containerfile not found", "Containerfile", 0)
+		}
 	}
+	ci.EndGroup()
 
+	// Justfiles validation
+	ci.StartGroup("Justfiles")
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Justfiles"))
 	justfile := filepath.Join(rootDir, "Justfile")
@@ -118,25 +152,31 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		warnings = append(warnings, "just not installed")
 		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("just not installed"))
 	}
+	ci.EndGroup()
 
+	// Brewfiles validation
+	ci.StartGroup("Brewfiles")
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Brewfiles"))
-	brewDir := filepath.Join(rootDir, "custom", "brew")
-	brewFiles := []string{}
-	if _, err := os.Stat(brewDir); err == nil {
-		_ = filepath.Walk(brewDir, func(path string, info os.FileInfo, err error) error {
-			if err != nil {
+	if validateSkipBrew {
+		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(skipped)"))
+	} else {
+		brewDir := filepath.Join(rootDir, "custom", "brew")
+		brewFiles := []string{}
+		if _, err := os.Stat(brewDir); err == nil {
+			_ = filepath.Walk(brewDir, func(path string, info os.FileInfo, err error) error {
+				if err != nil {
+					return nil
+				}
+				if !info.IsDir() && strings.Contains(info.Name(), ".Brewfile") {
+					brewFiles = append(brewFiles, path)
+				}
 				return nil
-			}
-			if !info.IsDir() && strings.Contains(info.Name(), ".Brewfile") {
-				brewFiles = append(brewFiles, path)
-			}
-			return nil
-		})
-	}
-	if len(brewFiles) == 0 {
-		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(no Brewfiles found)"))
-	} else if exec.CheckCommand("brew") {
+			})
+		}
+		if len(brewFiles) == 0 {
+			fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(no Brewfiles found)"))
+		} else if exec.CheckCommand("brew") {
 		currentUser := os.Getenv("USER")
 		if currentUser == "" {
 			currentUser = os.Getenv("LOGNAME")
@@ -200,76 +240,87 @@ func runValidate(cmd *cobra.Command, args []string) error {
 
 			fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), relPath)
 		}
-	} else {
-		warnings = append(warnings, "brew not installed")
-		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("brew not installed"))
+		} else {
+			warnings = append(warnings, "brew not installed")
+			fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("brew not installed"))
+		}
 	}
+	ci.EndGroup()
 
+	// Flatpaks validation
+	ci.StartGroup("Flatpaks")
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Flatpaks"))
-	flatpakDirs := []string{
-		filepath.Join(rootDir, "custom", "flatpaks"),
-		filepath.Join(rootDir, "custom", "flatpak"),
-	}
-	flatpakFiles := []string{}
-	for _, dir := range flatpakDirs {
-		if _, err := os.Stat(dir); err == nil {
-			_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
-				if err != nil {
-					return nil
-				}
-				if info.IsDir() {
-					return nil
-				}
-				name := info.Name()
-				if strings.HasSuffix(name, ".preinstall") || strings.HasSuffix(name, ".list") {
-					flatpakFiles = append(flatpakFiles, path)
-				}
-				return nil
-			})
+	if validateSkipFlatpak {
+		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(skipped)"))
+	} else {
+		flatpakDirs := []string{
+			filepath.Join(rootDir, "custom", "flatpaks"),
+			filepath.Join(rootDir, "custom", "flatpak"),
 		}
-	}
-	if len(flatpakFiles) == 0 {
-		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(no flatpak files found)"))
-	} else if exec.CheckCommand("flatpak") {
-		remoteResult := exec.RunSimple(ctx, "flatpak", "remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo")
-		if remoteResult.Err != nil {
-			warnings = append(warnings, "flatpak: could not add flathub")
-			fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(could not add flathub remote)"))
-		} else {
-			for _, flatpakFile := range flatpakFiles {
-				relPath, _ := filepath.Rel(rootDir, flatpakFile)
-				ids, err := parseFlatpakIDs(flatpakFile)
-				if err != nil {
-					warnings = append(warnings, fmt.Sprintf("flatpak: %s", relPath))
-					fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(read failed)"))
-					continue
-				}
-				if len(ids) == 0 {
-					pending = append(pending, fmt.Sprintf("flatpak: %s", relPath))
-					fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(no entries)"))
-					continue
-				}
-				failed := false
-				for _, id := range ids {
-					result := exec.RunSimple(ctx, "flatpak", "remote-info", "--user", "flathub", id)
-					if result.Err != nil {
-						failed = true
-						warnings = append(warnings, fmt.Sprintf("flatpak: %s", id))
+		flatpakFiles := []string{}
+		for _, dir := range flatpakDirs {
+			if _, err := os.Stat(dir); err == nil {
+				_ = filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+					if err != nil {
+						return nil
 					}
-				}
-				if failed {
-					fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(validation failed)"))
-					continue
-				}
-				fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), relPath)
+					if info.IsDir() {
+						return nil
+					}
+					name := info.Name()
+					if strings.HasSuffix(name, ".preinstall") || strings.HasSuffix(name, ".list") {
+						flatpakFiles = append(flatpakFiles, path)
+					}
+					return nil
+				})
 			}
 		}
-	} else {
-		warnings = append(warnings, "flatpak not installed")
-		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("flatpak not installed"))
+		if len(flatpakFiles) == 0 {
+			fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(no flatpak files found)"))
+		} else if exec.CheckCommand("flatpak") {
+			remoteResult := exec.RunSimple(ctx, "flatpak", "remote-add", "--user", "--if-not-exists", "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo")
+			if remoteResult.Err != nil {
+				warnings = append(warnings, "flatpak: could not add flathub")
+				fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(could not add flathub remote)"))
+			} else {
+				for _, flatpakFile := range flatpakFiles {
+					relPath, _ := filepath.Rel(rootDir, flatpakFile)
+					ids, err := parseFlatpakIDs(flatpakFile)
+					if err != nil {
+						warnings = append(warnings, fmt.Sprintf("flatpak: %s", relPath))
+						fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(read failed)"))
+						continue
+					}
+					if len(ids) == 0 {
+						pending = append(pending, fmt.Sprintf("flatpak: %s", relPath))
+						fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(no entries)"))
+						continue
+					}
+					failed := false
+					for _, id := range ids {
+						result := exec.RunSimple(ctx, "flatpak", "remote-info", "--user", "flathub", id)
+						if result.Err != nil {
+							failed = true
+							warnings = append(warnings, fmt.Sprintf("flatpak: %s", id))
+						}
+					}
+					if failed {
+						fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(validation failed)"))
+						continue
+					}
+					fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), relPath)
+				}
+			}
+		} else {
+			warnings = append(warnings, "flatpak not installed")
+			fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("flatpak not installed"))
+		}
 	}
+	ci.EndGroup()
 
+	// Shell Scripts validation
+	ci.StartGroup("Shell Scripts")
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Shell Scripts"))
 	buildDir := filepath.Join(rootDir, "build")
@@ -296,6 +347,9 @@ func runValidate(cmd *cobra.Command, args []string) error {
 				if result.Err != nil {
 					warnings = append(warnings, fmt.Sprintf("shellcheck: %s", relPath))
 					fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(issues found)"))
+					if ciEnv.IsCI {
+						ci.LogWarning(fmt.Sprintf("shellcheck issues in %s", relPath))
+					}
 				} else {
 					fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), relPath)
 				}
@@ -306,15 +360,26 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	} else {
 		fmt.Printf("  %s %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("build/ directory not found"))
 	}
+	ci.EndGroup()
 
+	// Summary
 	fmt.Println()
 	if len(errors) > 0 {
 		fmt.Println(ui.ErrorBox.Render(fmt.Sprintf("Validation failed with %d error(s)", len(errors))))
+		if ciEnv.IsCI {
+			_ = ci.AddSummary(fmt.Sprintf("## Validation Failed\n\n%d error(s) found", len(errors)))
+		}
 		return fmt.Errorf("validation failed")
 	} else if len(warnings) > 0 || len(pending) > 0 {
 		fmt.Println(ui.InfoBox.Render(fmt.Sprintf("Validation passed with %d warning(s)", len(warnings))))
+		if ciEnv.IsCI {
+			_ = ci.AddSummary(fmt.Sprintf("## Validation Passed\n\n%d warning(s)", len(warnings)))
+		}
 	} else {
 		fmt.Println(ui.SuccessBox.Render("Validation passed!"))
+		if ciEnv.IsCI {
+			_ = ci.AddSummary("## Validation Passed\n\nAll checks passed successfully!")
+		}
 	}
 
 	return nil
