@@ -3,14 +3,12 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"github.com/spf13/cobra"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/spf13/cobra"
-
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var statusCmd = &cobra.Command{
@@ -23,7 +21,7 @@ var statusCmd = &cobra.Command{
   - Tool availability
 
 Examples:
-  finctl status`,
+  galena status`,
 	RunE: runStatus,
 }
 
@@ -41,17 +39,14 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("getting status: %w", err)
 	}
 
-	// Print banner
-	fmt.Println(ui.Banner())
+	ui.StartScreen("STATUS", "Project and tool overview")
 
-	// Project info
 	fmt.Println(ui.Title.Render("Project"))
 	printKV("Name", fmt.Sprintf("%v", status["project"]))
 	printKV("Root", fmt.Sprintf("%v", status["root_dir"]))
 	printKV("Base Image", fmt.Sprintf("%v", status["base_image"]))
 	printKV("Fedora Version", fmt.Sprintf("%v", status["fedora_version"]))
 
-	// Variants
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Variants"))
 	if variants, ok := status["variants"].([]string); ok {
@@ -60,7 +55,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Local images
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Local Images"))
 	if images, ok := status["local_images"].([]string); ok && len(images) > 0 {
@@ -71,7 +65,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		fmt.Println(ui.MutedStyle.Render("  No local images found"))
 	}
 
-	// Tools
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Tools"))
 	tools := []string{"podman", "just", "qemu-system-x86_64", "cosign", "syft", "bootc"}
@@ -83,7 +76,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Git status
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Git"))
 	gitResult := exec.Git(ctx, rootDir, "rev-parse", "--short", "HEAD")
@@ -107,6 +99,6 @@ func runStatus(cmd *cobra.Command, args []string) error {
 }
 
 func printKV(key, value string) {
-	keyStyle := lipgloss.NewStyle().Width(16).Foreground(ui.Muted)
+	keyStyle := ui.KeyStyle.Width(18)
 	fmt.Printf("  %s %s\n", keyStyle.Render(key+":"), value)
 }

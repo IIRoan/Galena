@@ -1,4 +1,4 @@
-// Package ci provides CI/CD integration utilities for finctl
+// Package ci provides CI/CD integration utilities for galena
 package ci
 
 import (
@@ -11,7 +11,7 @@ import (
 
 // Environment represents the CI environment
 type Environment struct {
-	IsCI           bool
+	IsCI            bool
 	IsGitHubActions bool
 
 	// GitHub Actions specific
@@ -60,7 +60,9 @@ func Detect() *Environment {
 
 		// Parse run number
 		if rn := os.Getenv("GITHUB_RUN_NUMBER"); rn != "" {
-			fmt.Sscanf(rn, "%d", &env.RunNumber)
+			if _, err := fmt.Sscanf(rn, "%d", &env.RunNumber); err != nil {
+				env.RunNumber = 0
+			}
 		}
 
 		// Computed values
@@ -262,21 +264,21 @@ func (e *Environment) GenerateLabels(imageName string, cfg LabelConfig) map[stri
 
 	labels := map[string]string{
 		// OCI standard labels
-		"org.opencontainers.image.created":       now.Format("2006-01-02T15:04:05Z"),
-		"org.opencontainers.image.title":         imageName,
-		"org.opencontainers.image.description":   cfg.Description,
-		"org.opencontainers.image.vendor":        e.RepositoryOwner,
-		"org.opencontainers.image.version":       fmt.Sprintf("stable.%s", dateTag),
+		"org.opencontainers.image.created":     now.Format("2006-01-02T15:04:05Z"),
+		"org.opencontainers.image.title":       imageName,
+		"org.opencontainers.image.description": cfg.Description,
+		"org.opencontainers.image.vendor":      e.RepositoryOwner,
+		"org.opencontainers.image.version":     fmt.Sprintf("stable.%s", dateTag),
 
 		// Bootc marker
 		"containers.bootc": "1",
 
 		// ArtifactHub labels
-		"io.artifacthub.package.deprecated":  "false",
-		"io.artifacthub.package.keywords":    cfg.Keywords,
-		"io.artifacthub.package.license":     cfg.License,
-		"io.artifacthub.package.logo-url":    cfg.LogoURL,
-		"io.artifacthub.package.prerelease":  "false",
+		"io.artifacthub.package.deprecated": "false",
+		"io.artifacthub.package.keywords":   cfg.Keywords,
+		"io.artifacthub.package.license":    cfg.License,
+		"io.artifacthub.package.logo-url":   cfg.LogoURL,
+		"io.artifacthub.package.prerelease": "false",
 	}
 
 	if e.Repository != "" {
@@ -348,7 +350,7 @@ func sanitizeTag(s string) string {
 // CacheDir returns the cache directory for CI
 func CacheDir() string {
 	if dir := os.Getenv("RUNNER_TOOL_CACHE"); dir != "" {
-		return filepath.Join(dir, "finctl")
+		return filepath.Join(dir, "galena")
 	}
-	return filepath.Join(os.TempDir(), "finctl-cache")
+	return filepath.Join(os.TempDir(), "galena-cache")
 }

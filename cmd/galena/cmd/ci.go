@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/ci"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/version"
+	"github.com/iiroan/galena/internal/ci"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/version"
 )
 
 var (
@@ -53,20 +53,20 @@ Environment variables:
 
 Examples:
   # Run in GitHub Actions
-  finctl ci build
+  galena ci build
 
   # Build and push (if on default branch)
-  finctl ci build --push
+  galena ci build --push
 
   # Build with signing and SBOM
-  finctl ci build --push --sign --sbom`,
+  galena ci build --push --sign --sbom`,
 	RunE: runCIBuild,
 }
 
 var ciSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Setup CI environment",
-	Long: `Setup the CI environment by installing finctl and dependencies.
+	Long: `Setup the CI environment by installing galena and dependencies.
 
 This is typically run as the first step in a CI pipeline to ensure
 all tools are available.`,
@@ -203,12 +203,12 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 	digest := strings.TrimSpace(digestResult.Stdout)
 
 	// Set outputs for GitHub Actions
-	ci.SetOutput("image", fullImageRef)
-	ci.SetOutput("tags", strings.Join(tags, " "))
-	ci.SetOutput("digest", digest)
-	ci.SetOutput("version", versionStr)
-	ci.SetOutput("registry", registry)
-	ci.SetOutput("image_name", imageName)
+	setCIOutput("image", fullImageRef)
+	setCIOutput("tags", strings.Join(tags, " "))
+	setCIOutput("digest", digest)
+	setCIOutput("version", versionStr)
+	setCIOutput("registry", registry)
+	setCIOutput("image_name", imageName)
 
 	// Determine if we should push
 	shouldPush := ciPush
@@ -242,7 +242,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		// Get digest after push
 		digestResult := exec.Podman(ctx, "inspect", "--format", "{{.Digest}}", fullImageRef)
 		digest = strings.TrimSpace(digestResult.Stdout)
-		ci.SetOutput("digest", digest)
+		setCIOutput("digest", digest)
 
 		// Sign if requested
 		if ciSign && exec.CheckCommand("cosign") {
@@ -272,7 +272,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			if syftResult.Err != nil {
 				ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", syftResult.Err))
 			} else {
-				ci.SetOutput("sbom", sbomPath)
+				setCIOutput("sbom", sbomPath)
 
 				// Attest SBOM if signing is enabled
 				if ciSign && exec.CheckCommand("cosign") {
@@ -306,7 +306,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 	if err := manifest.Save(manifestPath); err != nil {
 		logger.Warn("could not save manifest", "error", err)
 	} else {
-		ci.SetOutput("manifest", manifestPath)
+		setCIOutput("manifest", manifestPath)
 	}
 
 	// Add job summary
@@ -319,7 +319,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		"| Digest | `%s` |\n"+
 		"| Pushed | %v |\n"+
 		"| Signed | %v |\n\n"+
-		"Built with [finctl](https://github.com/finpilot/finctl) at %s\n",
+		"Built with [galena](https://github.com/iiroan/galena) at %s\n",
 		fullImageRef,
 		strings.Join(tags, ", "),
 		versionStr,
@@ -328,7 +328,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		ciSign && shouldPush,
 		time.Now().Format(time.RFC3339),
 	)
-	ci.AddSummary(summary)
+	addCISummary(summary)
 
 	logger.Info("CI build completed successfully",
 		"image", fullImageRef,
@@ -337,6 +337,24 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 	)
 
 	return nil
+}
+
+func setCIOutput(name, value string) {
+	if err := ci.SetOutput(name, value); err != nil {
+		logger.Warn("could not set CI output", "name", name, "error", err)
+	}
+}
+
+func setCIEnv(name, value string) {
+	if err := ci.SetEnv(name, value); err != nil {
+		logger.Warn("could not set CI env", "name", name, "error", err)
+	}
+}
+
+func addCISummary(summary string) {
+	if err := ci.AddSummary(summary); err != nil {
+		logger.Warn("could not add CI summary", "error", err)
+	}
 }
 
 func runCISetup(cmd *cobra.Command, args []string) error {
@@ -384,7 +402,7 @@ func runCISetup(cmd *cobra.Command, args []string) error {
 
 	// Set environment for subsequent steps
 	if env.IsGitHubActions {
-		ci.SetEnv("FINCTL_CI", "true")
+		setCIEnv("GALENA_CI", "true")
 	}
 
 	logger.Info("CI setup completed")

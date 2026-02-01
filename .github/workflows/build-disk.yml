@@ -55,10 +55,10 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
-      - name: Build finctl
+      - name: Build galena
         run: |
-          go build -o ${{ github.workspace }}/finctl ./cmd/finctl/
-          chmod +x ${{ github.workspace }}/finctl
+          go build -o ${{ github.workspace }}/galena ./cmd/galena/
+          chmod +x ${{ github.workspace }}/galena
 
       - name: Maximize build space
         uses: ublue-os/remove-unwanted-software@517622d6452028f266b7ba4cc9a123b5f58a6b53 # v7
@@ -87,7 +87,7 @@ jobs:
           mkdir -p output
 
           # Run with sudo - bootc-image-builder requires rootful podman
-          sudo ${{ github.workspace }}/finctl disk ${{ inputs.image_type }} \
+          sudo ${{ github.workspace }}/galena disk ${{ inputs.image_type }} \
             --image ${{ steps.image.outputs.ref }} \
             --output ./output
 

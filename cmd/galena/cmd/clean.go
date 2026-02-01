@@ -9,9 +9,9 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -32,16 +32,16 @@ By default, removes:
 
 Examples:
   # Clean local images only
-  finctl clean --images
+  galena clean --images
 
   # Clean output directory only
-  finctl clean --output
+  galena clean --output
 
   # Clean everything
-  finctl clean --all
+  galena clean --all
 
   # Skip confirmation
-  finctl clean --all -y`,
+  galena clean --all -y`,
 	RunE: runClean,
 }
 

@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/build"
+	"github.com/iiroan/galena/internal/build"
 )
 
 var (
@@ -31,16 +31,16 @@ Subcommands:
 
 Examples:
   # Run a VM with the most recent disk image
-  finctl vm run
+  galena vm run
 
   # Run a VM with a specific image
-  finctl vm run --image ./output/disk.qcow2
+  galena vm run --image ./output/disk.qcow2
 
   # Run with custom resources
-  finctl vm run --memory 8G --cpus 4
+  galena vm run --memory 8G --cpus 4
 
   # Connect to VM via SSH
-  finctl vm ssh`,
+  galena vm ssh`,
 }
 
 var vmRunCmd = &cobra.Command{
@@ -52,10 +52,10 @@ If no image is specified, it will look for the most recent disk image
 in the output directory.
 
 Examples:
-  finctl vm run
-  finctl vm run ./output/disk.qcow2
-  finctl vm run --memory 8G --cpus 4
-  finctl vm run --display vnc`,
+  galena vm run
+  galena vm run ./output/disk.qcow2
+  galena vm run --memory 8G --cpus 4
+  galena vm run --display vnc`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runVMRun,
 }
@@ -68,9 +68,9 @@ var vmSSHCmd = &cobra.Command{
 By default, connects to localhost on port 2222 with the user 'finpilot'.
 
 Examples:
-  finctl vm ssh
-  finctl vm ssh root
-  finctl vm ssh --port 2223`,
+  galena vm ssh
+  galena vm ssh root
+  galena vm ssh --port 2223`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runVMSSH,
 }
@@ -121,7 +121,7 @@ func runVMRun(cmd *cobra.Command, args []string) error {
 		var err error
 		imagePath, err = vmRunner.FindDiskImage("")
 		if err != nil {
-			return fmt.Errorf("no disk image found: %w\nRun 'finctl disk qcow2' first to create one", err)
+			return fmt.Errorf("no disk image found: %w\nRun 'galena disk qcow2' first to create one", err)
 		}
 		logger.Info("auto-detected disk image", "path", imagePath)
 	}

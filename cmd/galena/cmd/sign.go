@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -26,13 +26,13 @@ You can also use a local key file for signing.
 
 Examples:
   # Keyless signing (GitHub OIDC)
-  finctl sign ghcr.io/myorg/myimage:stable
+  galena sign ghcr.io/myorg/myimage:stable
 
   # Sign with a key file
-  finctl sign ghcr.io/myorg/myimage:stable --key cosign.key
+  galena sign ghcr.io/myorg/myimage:stable --key cosign.key
 
   # Verify a signature
-  finctl sign --verify ghcr.io/myorg/myimage:stable`,
+  galena sign --verify ghcr.io/myorg/myimage:stable`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSign,
 }

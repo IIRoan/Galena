@@ -1,0 +1,63 @@
+name: Validate Lint
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "**/*.sh"
+      - "**/*.just"
+      - "Justfile"
+      - "galena.yaml"
+      - "Containerfile"
+      - "custom/**"
+      - "build/**"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.sh"
+      - "**/*.just"
+      - "Justfile"
+      - "galena.yaml"
+      - "Containerfile"
+      - "custom/**"
+      - "build/**"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install just
+        uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck podman flatpak
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@master
+
+      - name: Set up Flatpak
+        shell: bash
+        run: |
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build galena
+        shell: bash
+        run: go build -o galena ./cmd/galena
+
+      - name: Run validation
+        shell: bash
+        run: ./galena validate

@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -29,13 +29,13 @@ Supported formats:
 
 Examples:
   # Generate SPDX SBOM
-  finctl sbom ghcr.io/myorg/myimage:stable
+  galena sbom ghcr.io/myorg/myimage:stable
 
   # Generate CycloneDX SBOM
-  finctl sbom ghcr.io/myorg/myimage:stable --format cyclonedx
+  galena sbom ghcr.io/myorg/myimage:stable --format cyclonedx
 
   # Generate and attest SBOM to image
-  finctl sbom ghcr.io/myorg/myimage:stable --attest`,
+  galena sbom ghcr.io/myorg/myimage:stable --attest`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSBOM,
 }

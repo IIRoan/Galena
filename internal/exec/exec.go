@@ -1,4 +1,4 @@
-// Package exec provides command execution utilities for finctl
+// Package exec provides command execution utilities for galena
 package exec
 
 import (

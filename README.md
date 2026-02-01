@@ -71,23 +71,23 @@ sudo systemctl reboot
 
 This repo uses GitHub Actions to build automatically on every push. You can also build locally.
 
-### finctl CLI
+### galena CLI
 
-Galena includes `finctl`, a custom Go CLI built with [Charm](https://charm.sh/) (bubbletea/lipgloss) for a beautiful terminal experience. It handles image building, signing, disk image creation, and more.
+Galena includes `galena`, a custom Go CLI built with [Charm](https://charm.sh/) (bubbletea/lipgloss) for a beautiful terminal experience. It handles image building, signing, disk image creation, and more.
 
 **First, build the CLI:**
 
 ```bash
-go build -o finctl ./cmd/finctl/
+go build -o galena ./cmd/galena/
 ```
 
 **Available commands:**
 
 ```bash
-./finctl disk <type>     # Build disk images (iso, anaconda-iso, qcow2, raw, vmdk)
-./finctl sign <image>    # Sign images with cosign
-./finctl sbom <image>    # Generate SBOM with Syft
-./finctl version         # Show version info
+./galena disk <type>     # Build disk images (iso, anaconda-iso, qcow2, raw, vmdk)
+./galena sign <image>    # Sign images with cosign
+./galena sbom <image>    # Generate SBOM with Syft
+./galena version         # Show version info
 ```
 
 ### Build Examples
@@ -97,10 +97,10 @@ go build -o finctl ./cmd/finctl/
 just build
 
 # Build an interactive ISO installer (requires sudo for bootc-image-builder)
-sudo ./finctl disk anaconda-iso --image ghcr.io/iiroan/galena:main
+sudo ./galena disk anaconda-iso --image ghcr.io/iiroan/galena:main
 
 # Build a VM disk image
-sudo ./finctl disk qcow2 --image ghcr.io/iiroan/galena:main
+sudo ./galena disk qcow2 --image ghcr.io/iiroan/galena:main
 ```
 
 ## Credits

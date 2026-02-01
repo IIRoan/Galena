@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var lintCmd = &cobra.Command{
@@ -23,8 +23,8 @@ This checks:
   - Boot configuration
 
 Examples:
-  finctl lint
-  finctl lint ghcr.io/myorg/myimage:stable`,
+  galena lint
+  galena lint ghcr.io/myorg/myimage:stable`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLint,
 }

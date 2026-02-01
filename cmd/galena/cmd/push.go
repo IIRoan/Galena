@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var pushCmd = &cobra.Command{
@@ -18,9 +18,9 @@ var pushCmd = &cobra.Command{
 If no image is specified, pushes the default image with the latest tag.
 
 Examples:
-  finctl push
-  finctl push ghcr.io/myorg/myimage:stable
-  finctl push --tag stable`,
+  galena push
+  galena push ghcr.io/myorg/myimage:stable
+  galena push --tag stable`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runPush,
 }
