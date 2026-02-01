@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/exec"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/exec"
 )
 
 // DiskBuilder builds disk images (qcow2, raw, iso) using bootc-image-builder

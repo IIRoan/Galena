@@ -9,8 +9,8 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var settingsCmd = &cobra.Command{
@@ -82,7 +82,7 @@ func runSettings(cmd *cobra.Command, args []string) error {
 			{ID: "defaults", TitleText: "Build Defaults", Details: "Default variant, tag, and build number"},
 			{ID: "flags", TitleText: "Build Flags", Details: "Push/sign/SBOM defaults and cache behavior"},
 			{ID: "advanced", TitleText: "Advanced Build Options", Details: "Build args and timeouts"},
-			{ID: "save", TitleText: "Save & Exit", Details: "Write updates to finctl.yaml"},
+			{ID: "save", TitleText: "Save & Exit", Details: "Write updates to galena.yaml"},
 			{ID: "exit", TitleText: "Exit", Details: "Leave without saving"},
 		}, ui.WithBackNavigation("Back"))
 		if err != nil {
@@ -102,7 +102,7 @@ func runSettings(cmd *cobra.Command, args []string) error {
 						Value(&themeName),
 					huh.NewConfirm().
 						Title("Show Banner").
-						Description("Display the finctl banner on screens").
+						Description("Display the galena banner on screens").
 						Value(&showBanner),
 					huh.NewConfirm().
 						Title("Dense Layout").

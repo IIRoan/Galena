@@ -6,9 +6,9 @@ import (
 	"github.com/spf13/cobra"
 	"strings"
 
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var statusCmd = &cobra.Command{
@@ -21,7 +21,7 @@ var statusCmd = &cobra.Command{
   - Tool availability
 
 Examples:
-  finctl status`,
+  galena status`,
 	RunE: runStatus,
 }
 

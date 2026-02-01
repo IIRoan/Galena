@@ -10,10 +10,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/ci"
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/ci"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -26,7 +26,7 @@ var validateCmd = &cobra.Command{
 	Use:   "validate",
 	Short: "Validate project files and configuration",
 	Long: `Validate project files including:
-  - Configuration (finctl.yaml)
+  - Configuration (galena.yaml)
   - Containerfile syntax
   - Justfile syntax
   - Shell scripts (shellcheck)
@@ -37,10 +37,10 @@ In CI environments (GitHub Actions), output is formatted with
 log groups and annotations for better integration.
 
 Examples:
-  finctl validate
-  finctl validate --skip-containerfile  # Skip Containerfile validation
-  finctl validate --skip-brew           # Skip Brewfile validation
-  finctl validate --skip-flatpak        # Skip Flatpak validation`,
+  galena validate
+  galena validate --skip-containerfile  # Skip Containerfile validation
+  galena validate --skip-brew           # Skip Brewfile validation
+  galena validate --skip-flatpak        # Skip Flatpak validation`,
 	RunE: runValidate,
 }
 
@@ -70,7 +70,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	fmt.Println(ui.Title.Render("Configuration"))
 	configPath := cfgFile
 	if configPath == "" {
-		configPath = filepath.Join(rootDir, "finctl.yaml")
+		configPath = filepath.Join(rootDir, "galena.yaml")
 	}
 	if _, err := os.Stat(configPath); err == nil {
 		loadedCfg, err := config.Load(configPath)
@@ -84,8 +84,8 @@ func runValidate(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), filepath.Base(configPath))
 		}
 	} else {
-		warnings = append(warnings, "No finctl.yaml found")
-		fmt.Printf("  %s finctl.yaml %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(not found)"))
+		warnings = append(warnings, "No galena.yaml found")
+		fmt.Printf("  %s galena.yaml %s\n", ui.StatusPending.String(), ui.MutedStyle.Render("(not found)"))
 	}
 	ci.EndGroup()
 
@@ -204,7 +204,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			tapsFile, err := os.CreateTemp("", "finctl-taps-*.Brewfile")
+			tapsFile, err := os.CreateTemp("", "galena-taps-*.Brewfile")
 			if err != nil {
 				warnings = append(warnings, fmt.Sprintf("brewfile: %s", relPath))
 				fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(temp file failed)"))
@@ -226,7 +226,7 @@ func runValidate(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			bundleResult := exec.RunSimple(ctx, "brew", "bundle", "exec", "whoami", "--file", brewfile)
+			bundleResult := exec.RunSimple(ctx, "brew", "bundle", "exec", "--file", brewfile, "--", "whoami")
 			if bundleResult.Err != nil {
 				warnings = append(warnings, fmt.Sprintf("brewfile: %s", relPath))
 				fmt.Printf("  %s %s %s\n", ui.StatusPending.String(), relPath, ui.MutedStyle.Render("(validation failed)"))

@@ -1,4 +1,4 @@
-// Package ci provides CI/CD integration utilities for finctl
+// Package ci provides CI/CD integration utilities for galena
 package ci
 
 import (
@@ -350,7 +350,7 @@ func sanitizeTag(s string) string {
 // CacheDir returns the cache directory for CI
 func CacheDir() string {
 	if dir := os.Getenv("RUNNER_TOOL_CACHE"); dir != "" {
-		return filepath.Join(dir, "finctl")
+		return filepath.Join(dir, "galena")
 	}
-	return filepath.Join(os.TempDir(), "finctl-cache")
+	return filepath.Join(os.TempDir(), "galena-cache")
 }

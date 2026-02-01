@@ -1,19 +1,19 @@
-# finctl Makefile
+# galena Makefile
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -ldflags "-X github.com/finpilot/finctl/cmd/finctl/cmd.Version=$(VERSION) \
-	-X github.com/finpilot/finctl/cmd/finctl/cmd.Commit=$(COMMIT) \
-	-X github.com/finpilot/finctl/cmd/finctl/cmd.BuildDate=$(BUILD_DATE)"
+LDFLAGS := -ldflags "-X github.com/iiroan/galena/cmd/galena/cmd.Version=$(VERSION) \
+	-X github.com/iiroan/galena/cmd/galena/cmd.Commit=$(COMMIT) \
+	-X github.com/iiroan/galena/cmd/galena/cmd.BuildDate=$(BUILD_DATE)"
 
 # Go parameters
 GOCMD := go
 GOBUILD := $(GOCMD) build
 GOTEST := $(GOCMD) test
 GOMOD := $(GOCMD) mod
-BINARY_NAME := finctl
+BINARY_NAME := galena
 
 # Installation paths
 PREFIX ?= /usr/local
@@ -24,27 +24,27 @@ BINDIR ?= $(PREFIX)/bin
 ## Default target
 all: build
 
-## Build the finctl binary
+## Build the galena binary
 build:
-	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/finctl/
+	$(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME) ./cmd/galena/
 
 ## Build for multiple platforms
 build-all: build-linux build-darwin
 
 build-linux:
-	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-amd64 ./cmd/finctl/
-	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-arm64 ./cmd/finctl/
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-amd64 ./cmd/galena/
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-linux-arm64 ./cmd/galena/
 
 build-darwin:
-	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-darwin-amd64 ./cmd/finctl/
-	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-darwin-arm64 ./cmd/finctl/
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-darwin-amd64 ./cmd/galena/
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o $(BINARY_NAME)-darwin-arm64 ./cmd/galena/
 
-## Install finctl to system
+## Install galena to system
 install: build
 	install -d $(DESTDIR)$(BINDIR)
 	install -m 755 $(BINARY_NAME) $(DESTDIR)$(BINDIR)/$(BINARY_NAME)
 
-## Uninstall finctl from system
+## Uninstall galena from system
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/$(BINARY_NAME)
 
@@ -75,7 +75,7 @@ deps:
 	$(GOMOD) tidy
 	$(GOMOD) verify
 
-## Run finctl in development
+## Run galena in development
 run: build
 	./$(BINARY_NAME) $(ARGS)
 
@@ -87,15 +87,15 @@ version: build
 status: build
 	./$(BINARY_NAME) status
 
-## Build container image (via finctl)
+## Build container image (via galena)
 image: build
 	./$(BINARY_NAME) build
 
-## Build disk image (via finctl)
+## Build disk image (via galena)
 disk: build
 	./$(BINARY_NAME) disk qcow2
 
-## Run VM (via finctl)
+## Run VM (via galena)
 vm: build
 	./$(BINARY_NAME) vm run
 
@@ -105,21 +105,21 @@ validate: build
 
 ## Show help
 help:
-	@echo "finctl - OCI-native OS image build tool"
+	@echo "galena - OCI-native OS image build tool"
 	@echo ""
 	@echo "Usage:"
 	@echo "  make [target]"
 	@echo ""
 	@echo "Targets:"
-	@echo "  build       Build the finctl binary"
-	@echo "  install     Install finctl to $(BINDIR)"
-	@echo "  uninstall   Remove finctl from $(BINDIR)"
+	@echo "  build       Build the galena binary"
+	@echo "  install     Install galena to $(BINDIR)"
+	@echo "  uninstall   Remove galena from $(BINDIR)"
 	@echo "  clean       Remove build artifacts"
 	@echo "  test        Run tests"
 	@echo "  fmt         Format Go code"
 	@echo "  lint        Run linter"
 	@echo "  deps        Update dependencies"
-	@echo "  version     Show finctl version"
+	@echo "  version     Show galena version"
 	@echo "  status      Show project status"
 	@echo "  image       Build container image"
 	@echo "  disk        Build disk image (qcow2)"

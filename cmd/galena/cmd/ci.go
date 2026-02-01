@@ -10,9 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/ci"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/version"
+	"github.com/iiroan/galena/internal/ci"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/version"
 )
 
 var (
@@ -53,20 +53,20 @@ Environment variables:
 
 Examples:
   # Run in GitHub Actions
-  finctl ci build
+  galena ci build
 
   # Build and push (if on default branch)
-  finctl ci build --push
+  galena ci build --push
 
   # Build with signing and SBOM
-  finctl ci build --push --sign --sbom`,
+  galena ci build --push --sign --sbom`,
 	RunE: runCIBuild,
 }
 
 var ciSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Setup CI environment",
-	Long: `Setup the CI environment by installing finctl and dependencies.
+	Long: `Setup the CI environment by installing galena and dependencies.
 
 This is typically run as the first step in a CI pipeline to ensure
 all tools are available.`,
@@ -319,7 +319,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		"| Digest | `%s` |\n"+
 		"| Pushed | %v |\n"+
 		"| Signed | %v |\n\n"+
-		"Built with [finctl](https://github.com/finpilot/finctl) at %s\n",
+		"Built with [galena](https://github.com/iiroan/galena) at %s\n",
 		fullImageRef,
 		strings.Join(tags, ", "),
 		versionStr,
@@ -402,7 +402,7 @@ func runCISetup(cmd *cobra.Command, args []string) error {
 
 	// Set environment for subsequent steps
 	if env.IsGitHubActions {
-		setCIEnv("FINCTL_CI", "true")
+		setCIEnv("GALENA_CI", "true")
 	}
 
 	logger.Info("CI setup completed")

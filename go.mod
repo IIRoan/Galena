@@ -1,4 +1,4 @@
-module github.com/finpilot/finctl
+module github.com/iiroan/galena
 
 go 1.23
 

@@ -1,4 +1,4 @@
-// Package config handles configuration loading and validation for finctl
+// Package config handles configuration loading and validation for galena
 package config
 
 import (
@@ -11,7 +11,7 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Config represents the main configuration for finctl
+// Config represents the main configuration for galena
 type Config struct {
 	// Project metadata
 	Name        string `yaml:"name"`
@@ -253,13 +253,13 @@ func FindProjectRoot() (string, error) {
 	return cwd, nil
 }
 
-// GetConfigPath returns the path to finctl.yaml in the project root
+// GetConfigPath returns the path to galena.yaml in the project root
 func GetConfigPath() (string, error) {
 	root, err := FindProjectRoot()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(root, "finctl.yaml"), nil
+	return filepath.Join(root, "galena.yaml"), nil
 }
 
 // LoadFromProject loads configuration from the project root

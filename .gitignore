@@ -6,8 +6,8 @@ _build-*/**
 /logs/
 
 # Go build artifacts (binaries in root only)
-/finctl
-/finctl-*
+/galena
+/galena-*
 build-manifest.json
 sbom.spdx.json
 

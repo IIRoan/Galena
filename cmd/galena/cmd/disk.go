@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -37,19 +37,19 @@ Supported output types:
 
 Examples:
   # Build a QCOW2 image for VM testing
-  finctl disk qcow2
+  galena disk qcow2
 
   # Build an ISO installer
-  finctl disk iso
+  galena disk iso
 
   # Build with a specific image reference
-  finctl disk qcow2 --image ghcr.io/myorg/myimage:stable
+  galena disk qcow2 --image ghcr.io/myorg/myimage:stable
 
   # Build with custom output directory
-  finctl disk qcow2 --output ./images
+  galena disk qcow2 --output ./images
 
   # Use existing Justfile recipes
-  finctl disk qcow2 --just`,
+  galena disk qcow2 --just`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: build.ListOutputTypes(),
 	RunE:      runDisk,

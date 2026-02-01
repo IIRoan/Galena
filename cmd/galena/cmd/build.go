@@ -12,8 +12,8 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -43,19 +43,19 @@ tags (stable, latest, beta).
 
 Examples:
   # Build with defaults (main variant, latest tag)
-  finctl build
+  galena build
 
   # Build a specific variant and tag
-  finctl build --variant main --tag stable
+  galena build --variant main --tag stable
 
   # Build and push to registry
-  finctl build --push
+  galena build --push
 
   # Build, sign, and generate SBOM
-  finctl build --push --sign --sbom
+  galena build --push --sign --sbom
 
   # Use existing Justfile (Phase 1 compatibility)
-  finctl build --just`,
+  galena build --just`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runBuild,
 }

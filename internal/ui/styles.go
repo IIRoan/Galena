@@ -258,7 +258,7 @@ func Banner() string {
 
 func Header(title string) string {
 	width := contentWidth()
-	brand := BrandStyle.Render(" finctl ")
+	brand := BrandStyle.Render(" galena ")
 	section := HeaderStyle.Render(" " + strings.ToUpper(title) + " ")
 	line := lipgloss.JoinHorizontal(lipgloss.Top, brand, section)
 	lineWidth := lipgloss.Width(line)

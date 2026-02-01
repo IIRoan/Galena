@@ -6,7 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 // Version information (set via ldflags)
@@ -19,7 +19,7 @@ var (
 var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print version information",
-	Long:  `Print detailed version information about finctl.`,
+	Long:  `Print detailed version information about galena.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		ui.StartScreen("VERSION", "Build information")
 		fmt.Printf("Version:    %s\n", Version)

@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 
 	"github.com/charmbracelet/log"
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/exec"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/exec"
 )
 
 // VMRunner runs virtual machines for testing

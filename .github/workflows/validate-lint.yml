@@ -8,7 +8,7 @@ on:
       - "**/*.sh"
       - "**/*.just"
       - "Justfile"
-      - "finctl.yaml"
+      - "galena.yaml"
       - "Containerfile"
       - "custom/**"
       - "build/**"
@@ -19,7 +19,7 @@ on:
       - "**/*.sh"
       - "**/*.just"
       - "Justfile"
-      - "finctl.yaml"
+      - "galena.yaml"
       - "Containerfile"
       - "custom/**"
       - "build/**"
@@ -54,10 +54,10 @@ jobs:
         run: |
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-      - name: Build finctl
+      - name: Build galena
         shell: bash
-        run: go build -o finctl ./cmd/finctl
+        run: go build -o galena ./cmd/galena
 
       - name: Run validation
         shell: bash
-        run: ./finctl validate
+        run: ./galena validate

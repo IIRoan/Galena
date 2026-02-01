@@ -1,4 +1,4 @@
-// Package build provides build orchestration for finctl
+// Package build provides build orchestration for galena
 package build
 
 import (
@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/charmbracelet/log"
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/exec"
-	"github.com/finpilot/finctl/internal/version"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/version"
 )
 
 // Builder orchestrates the image build process

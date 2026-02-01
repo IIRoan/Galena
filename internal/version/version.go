@@ -1,4 +1,4 @@
-// Package version handles version computation and management for finctl
+// Package version handles version computation and management for galena
 package version
 
 import (

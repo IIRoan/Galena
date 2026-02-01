@@ -14,9 +14,9 @@ import (
 	"github.com/charmbracelet/log"
 	"github.com/spf13/cobra"
 
-	"github.com/finpilot/finctl/internal/build"
-	"github.com/finpilot/finctl/internal/config"
-	"github.com/finpilot/finctl/internal/ui"
+	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/ui"
 )
 
 var (
@@ -37,10 +37,10 @@ const (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "finctl",
+	Use:   "galena",
 	Short: "Build and manage OCI-native OS images",
 	Long: ui.Banner() + `
-finctl is a CLI tool for building, testing, and deploying
+galena is a CLI tool for building, testing, and deploying
 OCI-native bootable operating system images.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -224,7 +224,7 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.PersistentFlags().BoolVarP(&quiet, "quiet", "q", false, "Suppress non-essential output")
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
-	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default: finctl.yaml)")
+	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default: galena.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&projectDir, "project", "C", "", "Project directory")
 
 	rootCmd.AddCommand(buildCmd)
@@ -272,7 +272,8 @@ func setupLogger() {
 	}
 
 	styles := log.DefaultStyles()
-	if !noColor && os.Getenv("NO_COLOR") == "" {
+	disableColor := noColor || os.Getenv("NO_COLOR") != "" || ui.CurrentPreferences.NoColor
+	if !disableColor {
 		styles.Levels[log.DebugLevel] = lipgloss.NewStyle().
 			SetString("DEBUG").
 			Foreground(ui.Muted).
