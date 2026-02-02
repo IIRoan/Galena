@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -49,6 +50,9 @@ func init() {
 func runSBOM(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	imageRef := args[0]
+	if err := platform.RequireLinux("sbom"); err != nil {
+		return err
+	}
 
 	if err := exec.RequireCommands("syft"); err != nil {
 		return fmt.Errorf("syft not found: %w\nInstall with: curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin", err)

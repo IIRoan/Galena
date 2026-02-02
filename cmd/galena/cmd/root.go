@@ -16,6 +16,7 @@ import (
 
 	"github.com/iiroan/galena/internal/build"
 	"github.com/iiroan/galena/internal/config"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -169,6 +170,9 @@ func waitForEnter(prompt string) error {
 func runFastBuild() error {
 	rootDir, err := getProjectRoot()
 	if err != nil {
+		return err
+	}
+	if err := platform.RequireLinux("fast build"); err != nil {
 		return err
 	}
 

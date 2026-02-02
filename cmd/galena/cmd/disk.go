@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -71,6 +72,9 @@ func runDisk(cmd *cobra.Command, args []string) error {
 	rootDir, err := getProjectRoot()
 	if err != nil {
 		return fmt.Errorf("finding project root: %w", err)
+	}
+	if err := platform.RequireLinux("disk builds"); err != nil {
+		return err
 	}
 
 	// Interactive mode

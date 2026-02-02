@@ -58,6 +58,10 @@ jobs:
         shell: bash
         run: go build -o galena ./cmd/galena
 
+      - name: Setup CI environment
+        shell: bash
+        run: ./galena ci setup
+
       - name: Run validation
         shell: bash
         run: ./galena validate

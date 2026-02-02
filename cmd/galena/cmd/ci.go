@@ -12,6 +12,7 @@ import (
 
 	"github.com/iiroan/galena/internal/ci"
 	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/version"
 )
 
@@ -100,6 +101,9 @@ func init() {
 func runCIBuild(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	env := ci.Detect()
+	if err := platform.RequireLinux("ci build"); err != nil {
+		return err
+	}
 
 	rootDir, err := getProjectRoot()
 	if err != nil {
@@ -115,6 +119,13 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		"is_default_branch", env.IsDefaultBranch,
 	)
 	ci.EndGroup()
+
+	if ciSign && !exec.CheckCommand("cosign") {
+		return fmt.Errorf("cosign is required for --sign (install with: go install github.com/sigstore/cosign/v2/cmd/cosign@latest)")
+	}
+	if ciSBOM && !exec.CheckCommand("syft") {
+		return fmt.Errorf("syft is required for --sbom (install with: https://github.com/anchore/syft)")
+	}
 
 	// Generate tags
 	tags := env.GenerateTags(ciDefaultTag)
@@ -360,6 +371,9 @@ func addCISummary(summary string) {
 func runCISetup(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	env := ci.Detect()
+	if err := platform.RequireLinux("ci setup"); err != nil {
+		return err
+	}
 
 	logger.Info("setting up CI environment")
 

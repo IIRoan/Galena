@@ -13,25 +13,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v5
 
+      - name: Set up Go
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Install ShellCheck
         shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y shellcheck
 
+      - name: Build galena
+        shell: bash
+        run: go build -o galena ./cmd/galena
+
       - name: Validate Shell Scripts
         shell: bash
-        run: |
-          echo "Running shellcheck on build scripts..."
-
-          set -xeuo pipefail
-
-          find "build" -iname '*.sh' -print0 | \
-            while IFS= read -r -d '' script ; do \
-              echo "::group:: ===$(basename "$script")==="
-              shellcheck -x "$script"
-              echo "✓ $script passed shellcheck"
-              echo "::endgroup::"
-            done
-
-          echo "All shell scripts passed validation"
+        run: ./galena validate --only shellcheck

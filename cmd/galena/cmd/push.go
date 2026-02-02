@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -33,6 +34,9 @@ func init() {
 
 func runPush(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+	if err := platform.RequireLinux("push"); err != nil {
+		return err
+	}
 
 	imageRef := ""
 	if len(args) > 0 {

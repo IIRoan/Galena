@@ -126,28 +126,21 @@ jobs:
             PUSH_FLAG="--push"
           fi
 
+          # Sign only when pushing
+          SIGN_FLAG=""
+          if [[ -n "${PUSH_FLAG}" ]]; then
+            SIGN_FLAG="--sign"
+          fi
+
           # Run the build
           ${{ github.workspace }}/galena ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
-            $PUSH_FLAG
+            $PUSH_FLAG \
+            $SIGN_FLAG
 
-      # OPTIONAL: Image Signing with Cosign
-      # Signing is disabled by default. To enable, see README.md "Optional: Enable Image Signing" section.
-
-      # - name: Install Cosign
-      #   uses: sigstore/cosign-installer@v3
-      #   if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-
-      # - name: Sign container image
-      #   if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-      #   run: |
-      #     IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-      #     for tag in ${{ steps.build.outputs.tags }}; do
-      #       cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
-      #     done
-      #   env:
-      #     COSIGN_EXPERIMENTAL: false
-      #     COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
 
       # OPTIONAL: SBOM Attestation
       # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
