@@ -40,7 +40,7 @@ jobs:
           echo "run_id=${run_id}" >> "${GITHUB_OUTPUT}"
 
       - name: Download build manifest
-        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/download-artifact@v4
         with:
           name: build-manifest
           run-id: ${{ steps.run.outputs.run_id }}
@@ -77,6 +77,19 @@ jobs:
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
           echo "image=${image}" >> "${GITHUB_OUTPUT}"
 
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Pull image for SBOM
+        env:
+          IMAGE: ${{ steps.manifest.outputs.image }}
+        run: |
+          docker pull "${IMAGE}"
+
       - name: Setup Syft
         id: setup-syft
         uses: anchore/sbom-action/download-syft@v0
@@ -86,7 +99,7 @@ jobs:
       - name: Generate SBOM
         id: generate-sbom
         env:
-          IMAGE: ${{ steps.manifest.outputs.image }}
+          IMAGE: docker:${{ steps.manifest.outputs.image }}
           SBOM_SCOPE: squashed
           SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
           SYFT_PARALLELISM: "1"
