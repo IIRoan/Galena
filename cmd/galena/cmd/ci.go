@@ -272,71 +272,88 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			ci.EndGroup()
 		}
 
-	// Generate SBOM if requested
-	if ciSBOM && exec.CheckCommand("syft") {
-		ci.StartGroup("Generating SBOM")
+		// Generate SBOM if requested
+		if ciSBOM && exec.CheckCommand("syft") {
+			ci.StartGroup("Generating SBOM")
 
-		if versionResult := exec.Syft(ctx, "--version"); versionResult.Err == nil {
-			logger.Info("syft", "version", strings.TrimSpace(versionResult.Stdout))
-		}
+			syftEnv := ensureSyftEnv(rootDir)
 
-		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
-		localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
-		ociArchivePath := filepath.Join(rootDir, "sbom-image.oci.tar")
-		logger.Info("generating SBOM",
-			"image", localImageRef,
-			"output", sbomPath,
-			"container_host", os.Getenv("CONTAINER_HOST"),
-		)
+			if versionResult := exec.Syft(ctx, "--version"); versionResult.Err == nil {
+				logger.Info("syft", "version", strings.TrimSpace(versionResult.Stdout))
+			}
 
-		saveResult := exec.Podman(ctx, "image", "save", "--format", "oci-archive", "-o", ociArchivePath, localImageRef)
-		if saveResult.Err != nil {
-			logger.Warn("podman image save failed",
+			sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
+			localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
+			containerHost := os.Getenv("CONTAINER_HOST")
+			logger.Info("generating SBOM",
 				"image", localImageRef,
-				"exit_code", saveResult.ExitCode,
-				"duration", saveResult.Duration,
-				"stderr", exec.LastNLines(saveResult.Stderr, 20),
+				"output", sbomPath,
+				"container_host", containerHost,
 			)
-		} else if info, err := os.Stat(ociArchivePath); err == nil {
-			logger.Info("sbom archive created", "path", ociArchivePath, "bytes", info.Size())
-		}
-		defer func() {
-			_ = os.Remove(ociArchivePath)
-		}()
 
-		var syftResult *exec.Result
-		if saveResult.Err == nil {
-			syftResult = exec.Syft(ctx, "scan", "oci-archive:"+ociArchivePath, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
-		}
-		if syftResult != nil && syftResult.Err != nil {
-			logger.Warn("syft scan failed",
-				"image", localImageRef,
-				"exit_code", syftResult.ExitCode,
-				"duration", syftResult.Duration,
-				"stderr", exec.LastNLines(syftResult.Stderr, 20),
-			)
-			if syftResult.ExitCode == 143 {
+			var syftResult *exec.Result
+			if containerHost != "" {
+				podmanImageRef := fmt.Sprintf("podman:%s", localImageRef)
+				logger.Info("syft scan via podman engine", "image", podmanImageRef)
+				syftResult = runSyft(ctx, syftEnv, "scan", podmanImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+				if syftResult.Err != nil {
+					logger.Warn("syft scan failed",
+						"image", podmanImageRef,
+						"exit_code", syftResult.ExitCode,
+						"duration", syftResult.Duration,
+						"stderr", exec.LastNLines(syftResult.Stderr, 20),
+					)
+				}
+			}
+
+			var ociArchivePath string
+			if syftResult == nil || syftResult.Err != nil {
+				ociArchivePath = filepath.Join(rootDir, "sbom-image.oci.tar")
+				saveResult := exec.Podman(ctx, "image", "save", "--format", "oci-archive", "-o", ociArchivePath, localImageRef)
+				if saveResult.Err != nil {
+					logger.Warn("podman image save failed",
+						"image", localImageRef,
+						"exit_code", saveResult.ExitCode,
+						"duration", saveResult.Duration,
+						"stderr", exec.LastNLines(saveResult.Stderr, 20),
+					)
+				} else if info, err := os.Stat(ociArchivePath); err == nil {
+					logger.Info("sbom archive created", "path", ociArchivePath, "bytes", info.Size())
+				}
+				if saveResult.Err == nil {
+					logger.Info("syft scan via oci-archive", "path", ociArchivePath)
+					syftResult = runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+				}
+			}
+
+			if ociArchivePath != "" {
+				defer func() {
+					_ = os.Remove(ociArchivePath)
+				}()
+			}
+
+			if syftResult != nil && syftResult.Err != nil && syftResult.ExitCode == 143 {
 				ci.LogWarning("SBOM generation terminated (exit 143). This often indicates the runner canceled the process or the job was superseded by a newer run.")
 			}
-		}
 
-		if syftResult == nil || syftResult.Err != nil {
-			logger.Info("retrying SBOM with registry image", "image", fullImageRef)
-			syftResult = exec.Syft(ctx, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
-		}
+			if syftResult == nil || syftResult.Err != nil {
+				logger.Info("retrying SBOM with registry image", "image", fullImageRef)
+				syftResult = runSyft(ctx, syftEnv, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+			}
 
-		if syftResult.Err != nil {
-			logger.Warn("syft scan failed",
-				"image", fullImageRef,
-				"exit_code", syftResult.ExitCode,
-				"duration", syftResult.Duration,
-				"stderr", exec.LastNLines(syftResult.Stderr, 20),
-			)
-			ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", syftResult.Err))
-		} else {
-			setCIOutput("sbom", sbomPath)
+			if syftResult.Err != nil {
+				logger.Warn("syft scan failed",
+					"image", fullImageRef,
+					"exit_code", syftResult.ExitCode,
+					"duration", syftResult.Duration,
+					"stderr", exec.LastNLines(syftResult.Stderr, 20),
+				)
+				ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", syftResult.Err))
+			} else {
+				logger.Info("SBOM generated", "output", sbomPath, "duration", syftResult.Duration)
+				setCIOutput("sbom", sbomPath)
 
-			// Attest SBOM if signing is enabled
+				// Attest SBOM if signing is enabled
 				if ciSign && exec.CheckCommand("cosign") {
 					logger.Info("attesting SBOM")
 					attestResult := exec.Cosign(ctx, "attest", "--yes", "--predicate", sbomPath, "--type", "spdxjson", fmt.Sprintf("%s/%s@%s", registry, imageName, digest))
