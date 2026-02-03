@@ -41,6 +41,9 @@ jobs:
       tags: ${{ steps.build.outputs.tags }}
       digest: ${{ steps.build.outputs.digest }}
       version: ${{ steps.build.outputs.version }}
+      should_push: ${{ steps.flags.outputs.should_push }}
+      should_sign: ${{ steps.flags.outputs.should_sign }}
+      should_sbom: ${{ steps.flags.outputs.should_sbom }}
 
     steps:
       - name: Prepare environment
@@ -126,24 +129,6 @@ jobs:
             echo "tags_override=${tags_override}"
           } >> "${GITHUB_OUTPUT}"
 
-      - name: Start Podman service for SBOM
-        if: steps.flags.outputs.should_sbom == 'true'
-        run: |
-          socket="${RUNNER_TEMP:-/tmp}/podman.sock"
-          podman system service --time=0 "unix://${socket}" > "${RUNNER_TEMP:-/tmp}/podman-service.log" 2>&1 &
-          echo "CONTAINER_HOST=unix://${socket}" >> "${GITHUB_ENV}"
-          echo "PODMAN_SERVICE_LOG=${RUNNER_TEMP:-/tmp}/podman-service.log" >> "${GITHUB_ENV}"
-
-      # SBOM: Software Bill of Materials generation using Syft
-      # Creates a detailed inventory of all software components in the image for supply chain security.
-      # Documentation: https://github.com/anchore/syft
-
-      - name: Setup Syft
-        uses: anchore/sbom-action/download-syft@v0
-        if: steps.flags.outputs.should_sbom == 'true'
-        with:
-          syft-version: v1.20.0
-
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
       - name: Login to GitHub Container Registry
@@ -178,21 +163,11 @@ jobs:
             SIGN_FLAG="--sign"
           fi
 
-          SBOM_FLAG=""
-          if [[ "${{ steps.flags.outputs.should_sbom }}" == "true" ]]; then
-            SBOM_FLAG="--sbom"
-          fi
-
           # Run the build
           ${{ github.workspace }}/galena ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
             $PUSH_FLAG \
-            $SIGN_FLAG \
-            $SBOM_FLAG
-
-      # SBOM Attestation
-      # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
-      # The galena CLI will automatically attest the SBOM when both --sign and --sbom flags are used.
+            $SIGN_FLAG
 
       - name: Upload build manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -202,24 +177,6 @@ jobs:
           path: build-manifest.json
           if-no-files-found: ignore
 
-      - name: Verify SBOM
-        if: steps.flags.outputs.should_sbom == 'true'
-        env:
-          SBOM_PATH: ${{ steps.build.outputs.sbom }}
-        run: |
-          if [[ -z "${SBOM_PATH}" || ! -f "${SBOM_PATH}" ]]; then
-            echo "SBOM not generated or missing at ${SBOM_PATH}" >&2
-            exit 1
-          fi
-
-      - name: Upload SBOM artifact
-        if: steps.build.outputs.sbom != ''
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: sbom-spdx-json
-          path: ${{ steps.build.outputs.sbom }}
-          if-no-files-found: error
-
       - name: Write build summary
         if: github.event_name == 'pull_request' && always()
         env:
@@ -228,7 +185,6 @@ jobs:
           TAGS: ${{ steps.build.outputs.tags }}
           DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ steps.build.outputs.version }}
-          SBOM_PATH: ${{ steps.build.outputs.sbom }}
           PUSHED: ${{ steps.flags.outputs.should_push == 'true' && steps.build.outcome == 'success' }}
           SIGNED: ${{ steps.flags.outputs.should_sign == 'true' && steps.build.outcome == 'success' }}
         run: |
@@ -236,10 +192,7 @@ jobs:
           tags_display="${TAGS:-n/a}"
           digest_display="${DIGEST:-n/a}"
           version_display="${VERSION:-n/a}"
-          sbom_display="skipped"
-          if [[ -n "${SBOM_PATH}" ]]; then
-            sbom_display="${SBOM_PATH}"
-          fi
+          sbom_display="handled in SBOM job"
           test_image="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
           {
             echo "## Build Summary"
@@ -255,4 +208,114 @@ jobs:
             echo "| Signed | ${SIGNED} |"
             echo "| Testing Tag | \`${test_image}\` |"
             echo "| SBOM | ${sbom_display} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-24.04
+    needs: build_push
+    if: needs.build_push.outputs.should_sbom == 'true'
+
+    permissions:
+      contents: read
+      id-token: write
+
+    outputs:
+      sbom_path: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+
+    steps:
+      - name: Setup Syft
+        id: setup-syft
+        uses: anchore/sbom-action/download-syft@v0
+        with:
+          syft-version: v1.20.0
+
+      - name: Generate SBOM
+        id: generate-sbom
+        env:
+          IMAGE: ${{ needs.build_push.outputs.image }}
+          SBOM_SCOPE: squashed
+          SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
+          SYFT_CACHE_DIR: ${{ github.workspace }}/.cache/syft
+          STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
+          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+          TMPDIR: ${{ github.workspace }}/.cache/tmp
+        run: |
+          mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
+          OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
+          ${SYFT_CMD} scan "${IMAGE}" --scope "${SBOM_SCOPE}" -o "spdx-json=${OUTPUT_PATH}"
+          echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-spdx-json
+          path: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+          if-no-files-found: error
+
+      - name: Install Cosign
+        if: needs.build_push.outputs.should_sign == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Attest SBOM
+        if: needs.build_push.outputs.should_sign == 'true'
+        env:
+          IMAGE: ${{ needs.build_push.outputs.image }}
+          DIGEST: ${{ needs.build_push.outputs.digest }}
+        run: |
+          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${IMAGE}@${DIGEST}"
+
+      - name: Write SBOM summary
+        if: always()
+        env:
+          IMAGE: ${{ needs.build_push.outputs.image }}
+          SBOM_PATH: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+          RESULT: ${{ steps.generate-sbom.outcome }}
+        run: |
+          {
+            echo "## SBOM Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${RESULT} |"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Scope | squashed |"
+            echo "| SBOM Path | \`${SBOM_PATH}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  workflow_summary:
+    name: Workflow Summary
+    runs-on: ubuntu-24.04
+    needs:
+      - build_push
+      - sbom
+    if: always()
+    steps:
+      - name: Write workflow summary
+        env:
+          BUILD_RESULT: ${{ needs.build_push.result }}
+          SBOM_RESULT: ${{ needs.sbom.result }}
+          IMAGE: ${{ needs.build_push.outputs.image }}
+          TAGS: ${{ needs.build_push.outputs.tags }}
+          DIGEST: ${{ needs.build_push.outputs.digest }}
+          VERSION: ${{ needs.build_push.outputs.version }}
+          PUSHED: ${{ needs.build_push.outputs.should_push }}
+          SIGNED: ${{ needs.build_push.outputs.should_sign }}
+        run: |
+          {
+            echo "## Workflow Summary"
+            echo ""
+            echo "| Stage | Result |"
+            echo "| --- | --- |"
+            echo "| Build + Push | ${BUILD_RESULT} |"
+            echo "| SBOM | ${SBOM_RESULT} |"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Tags | ${TAGS} |"
+            echo "| Version | \`${VERSION}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Pushed | ${PUSHED} |"
+            echo "| Signed | ${SIGNED} |"
           } >> "${GITHUB_STEP_SUMMARY}"
