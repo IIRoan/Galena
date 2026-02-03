@@ -55,10 +55,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      - name: Install Podman
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+
       - name: Build galena
         run: |
           go build -o ${{ github.workspace }}/galena ./cmd/galena/
           chmod +x ${{ github.workspace }}/galena
+
+      - name: Setup CI environment
+        run: ${{ github.workspace }}/galena ci setup
 
       - name: Maximize build space
         uses: ublue-os/remove-unwanted-software@517622d6452028f266b7ba4cc9a123b5f58a6b53 # v7
@@ -83,6 +92,7 @@ jobs:
           fi
 
       - name: Build disk image
+        id: build
         run: |
           mkdir -p output
 
@@ -152,3 +162,30 @@ jobs:
           path: output/
           compression-level: 0
           retention-days: 7
+
+      - name: Write build summary
+        if: always()
+        env:
+          IMAGE_TYPE: ${{ inputs.image_type }}
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          UPLOAD_R2: ${{ inputs.upload_to_r2 }}
+        run: |
+          file_list="n/a"
+          if [[ -d output ]]; then
+            file_list=$(ls -1 output 2>/dev/null | tr '\n' ',' | sed 's/,$//')
+            if [[ -z "${file_list}" ]]; then
+              file_list="none"
+            fi
+          fi
+          {
+            echo "## Disk Image Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${BUILD_OUTCOME} |"
+            echo "| Image Type | ${IMAGE_TYPE} |"
+            echo "| Image Ref | \`${IMAGE_REF}\` |"
+            echo "| Upload to R2 | ${UPLOAD_R2} |"
+            echo "| Output Files | ${file_list} |"
+          } >> "${GITHUB_STEP_SUMMARY}"

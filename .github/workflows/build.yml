@@ -24,7 +24,7 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build_push:
@@ -41,6 +41,8 @@ jobs:
       tags: ${{ steps.build.outputs.tags }}
       digest: ${{ steps.build.outputs.digest }}
       version: ${{ steps.build.outputs.version }}
+      should_push: ${{ steps.flags.outputs.should_push }}
+      should_sign: ${{ steps.flags.outputs.should_sign }}
 
     steps:
       - name: Prepare environment
@@ -88,27 +90,56 @@ jobs:
       - name: Setup CI environment
         run: ${{ github.workspace }}/galena ci setup
 
-      # SBOM (OPTIONAL): Software Bill of Materials generation using Syft
-      # Creates a detailed inventory of all software components in the image for supply chain security.
-      # To enable:
-      #   1. Uncomment the "Setup Syft" step below
-      #   2. Add --sbom flag to the "Build and push image" step
-      # Documentation: https://github.com/anchore/syft
+      - name: Compute build flags
+        id: flags
+        run: |
+          is_pr="false"
+          is_same_repo="false"
+          is_default_branch="false"
 
-      # - name: Setup Syft
-      #   uses: anchore/sbom-action/download-syft@v0
-      #   with:
-      #     syft-version: v1.20.0
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            is_pr="true"
+            if [[ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]]; then
+              is_same_repo="true"
+            fi
+          fi
+
+          if [[ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]]; then
+            is_default_branch="true"
+          fi
+
+          should_push="false"
+          if [[ "${is_default_branch}" == "true" ]] || [[ "${is_pr}" == "true" && "${is_same_repo}" == "true" ]]; then
+            should_push="true"
+          fi
+
+          tags_override=""
+          if [[ "${is_pr}" == "true" && "${is_same_repo}" == "true" ]]; then
+            tags_override="testing"
+          fi
+
+          {
+            echo "is_pr=${is_pr}"
+            echo "is_same_repo=${is_same_repo}"
+            echo "is_default_branch=${is_default_branch}"
+            echo "should_push=${should_push}"
+            echo "should_sign=${should_push}"
+            echo "tags_override=${tags_override}"
+          } >> "${GITHUB_OUTPUT}"
 
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: steps.flags.outputs.should_push == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        if: steps.flags.outputs.should_sign == 'true'
 
       - name: Build and push image
         id: build
@@ -118,45 +149,23 @@ jobs:
           IMAGE_LOGO_URL: ${{ env.IMAGE_LOGO_URL }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_REGISTRY: ${{ env.IMAGE_REGISTRY }}
+          GALENA_CI_TAGS: ${{ steps.flags.outputs.tags_override }}
         run: |
-          # Determine if we should push
           PUSH_FLAG=""
-          if [[ "${{ github.event_name }}" != "pull_request" ]] && \
-             [[ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]]; then
+          if [[ "${{ steps.flags.outputs.should_push }}" == "true" ]]; then
             PUSH_FLAG="--push"
+          fi
+
+          SIGN_FLAG=""
+          if [[ "${{ steps.flags.outputs.should_sign }}" == "true" ]]; then
+            SIGN_FLAG="--sign"
           fi
 
           # Run the build
           ${{ github.workspace }}/galena ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
-            $PUSH_FLAG
-
-      # OPTIONAL: Image Signing with Cosign
-      # Signing is disabled by default. To enable, see README.md "Optional: Enable Image Signing" section.
-
-      # - name: Install Cosign
-      #   uses: sigstore/cosign-installer@v3
-      #   if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-
-      # - name: Sign container image
-      #   if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-      #   run: |
-      #     IMAGE_FULL="${{ env.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}"
-      #     for tag in ${{ steps.build.outputs.tags }}; do
-      #       cosign sign -y --key env://COSIGN_PRIVATE_KEY $IMAGE_FULL:$tag
-      #     done
-      #   env:
-      #     COSIGN_EXPERIMENTAL: false
-      #     COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
-
-      # OPTIONAL: SBOM Attestation
-      # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
-      # Requires image signing to be enabled first (see above).
-      # To enable:
-      #   1. First enable image signing (see above section)
-      #   2. Enable SBOM generation (see above section)
-      #   3. Add --sbom flag to the "Build and push image" step
-      # The galena CLI will automatically attest the SBOM when both --sign and --sbom flags are used.
+            $PUSH_FLAG \
+            $SIGN_FLAG
 
       - name: Upload build manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -165,3 +174,63 @@ jobs:
           name: build-manifest
           path: build-manifest.json
           if-no-files-found: ignore
+
+      - name: Write build summary
+        if: github.event_name == 'pull_request' && always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          IMAGE: ${{ steps.build.outputs.image }}
+          TAGS: ${{ steps.build.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ steps.build.outputs.version }}
+          PUSHED: ${{ steps.flags.outputs.should_push == 'true' && steps.build.outcome == 'success' }}
+          SIGNED: ${{ steps.flags.outputs.should_sign == 'true' && steps.build.outcome == 'success' }}
+        run: |
+          image_display="${IMAGE:-n/a}"
+          tags_display="${TAGS:-n/a}"
+          digest_display="${DIGEST:-n/a}"
+          version_display="${VERSION:-n/a}"
+          test_image="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
+          {
+            echo "## Build Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${BUILD_OUTCOME} |"
+            echo "| Image | \`${image_display}\` |"
+            echo "| Tags | ${tags_display} |"
+            echo "| Version | \`${version_display}\` |"
+            echo "| Digest | \`${digest_display}\` |"
+            echo "| Pushed | ${PUSHED} |"
+            echo "| Signed | ${SIGNED} |"
+            echo "| Testing Tag | \`${test_image}\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  workflow_summary:
+    name: Workflow Summary
+    runs-on: ubuntu-24.04
+    needs:
+      - build_push
+    if: always()
+    steps:
+      - name: Write workflow summary
+        env:
+          BUILD_RESULT: ${{ needs.build_push.result }}
+          IMAGE: ${{ needs.build_push.outputs.image }}
+          TAGS: ${{ needs.build_push.outputs.tags }}
+          DIGEST: ${{ needs.build_push.outputs.digest }}
+          PUSHED: ${{ needs.build_push.outputs.should_push }}
+          SIGNED: ${{ needs.build_push.outputs.should_sign }}
+        run: |
+          {
+            echo "## Workflow Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Build Result | ${BUILD_RESULT} |"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Tags | ${TAGS} |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| Pushed | ${PUSHED} |"
+            echo "| Signed | ${SIGNED} |"
+          } >> "${GITHUB_STEP_SUMMARY}"

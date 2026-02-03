@@ -189,10 +189,10 @@ func (v Info) Labels() map[string]string {
 	}
 
 	if v.Variant != "" {
-		labels["io.finpilot.variant"] = v.Variant
+		labels["io.galena.variant"] = v.Variant
 	}
 	if v.Tag != "" {
-		labels["io.finpilot.tag"] = v.Tag
+		labels["io.galena.tag"] = v.Tag
 	}
 
 	return labels

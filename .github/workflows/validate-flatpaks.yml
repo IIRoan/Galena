@@ -6,6 +6,7 @@ on:
   pull_request:
     paths:
       - "custom/flatpak/**"
+      - "custom/flatpaks/**"
 jobs:
   validate:
     runs-on: ubuntu-latest
@@ -13,25 +14,37 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v5
 
+      - name: Set up Go
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Set up Flathub
         shell: bash
         run: |
           sudo apt install -y flatpak
           flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 
-      - name: Validate Flatpaks
+      - name: Build galena
         shell: bash
+        run: go build -o galena ./cmd/galena
+
+      - name: Validate Flatpaks
+        id: validate
+        shell: bash
+        run: ./galena validate --only flatpak
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
         run: |
-          echo "Validating flatpak files in custom/flatpak/ directory..."
-
-          set -xeuo pipefail
-
-          find "custom/flatpak" -iname '*\.list*' -print0 | \
-            while IFS= read -r -d '' flatpaks_file ; do \
-              echo "::group:: ===$(basename "$flatpaks_file")==="
-              grep -v "#.*" "$flatpaks_file" | grep -v "^$" | \
-                while read -r flatpak ; do \
-                  flatpak remote-info --user flathub "${flatpak}"
-                done
-              echo "::endgroup::"
-            done
+          {
+            echo "## Flatpak Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only flatpak\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

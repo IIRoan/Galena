@@ -11,6 +11,7 @@ import (
 
 	"github.com/iiroan/galena/internal/build"
 	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -54,6 +55,9 @@ func init() {
 
 func runClean(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
+	if err := platform.RequireLinux("clean"); err != nil {
+		return err
+	}
 
 	rootDir, err := getProjectRoot()
 	if err != nil {

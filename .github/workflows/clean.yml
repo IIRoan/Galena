@@ -20,8 +20,23 @@ jobs:
           # IMPORTANT: Update this to match your image name from Containerfile (line 9)
           # This should match the "# Name: your-repo-name" comment in your Containerfile
           # Example: If your Containerfile has "# Name: my-custom-os", use "my-custom-os" here
-          packages: finpilot
+          packages: galena
           older-than: 90 days
           delete-orphaned-images: true
           keep-n-tagged: 7
           keep-n-untagged: 7
+
+      - name: Write cleanup summary
+        if: always()
+        run: |
+          {
+            echo "## Cleanup Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Package | galena |"
+            echo "| Older Than | 90 days |"
+            echo "| Delete Orphaned | true |"
+            echo "| Keep Tagged | 7 |"
+            echo "| Keep Untagged | 7 |"
+          } >> "${GITHUB_STEP_SUMMARY}"

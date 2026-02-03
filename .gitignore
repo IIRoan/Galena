@@ -10,6 +10,9 @@ _build-*/**
 /galena-*
 build-manifest.json
 sbom.spdx.json
+sbom*.json
+sbom-image.oci.tar
+.cache/
 
 # Go module cache (if using vendor)
 vendor/

@@ -93,7 +93,7 @@ type UIConfig struct {
 // DefaultConfig returns a sensible default configuration
 func DefaultConfig() *Config {
 	return &Config{
-		Name:        "finpilot",
+		Name:        "galena",
 		Description: "OCI-native OS appliance",
 		Registry:    "ghcr.io",
 		Repository:  "",

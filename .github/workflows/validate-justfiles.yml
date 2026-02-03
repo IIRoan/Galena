@@ -14,27 +14,34 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v5
 
+      - name: Set up Go
+        uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
       - name: Install just
         uses: extractions/setup-just@dd310ad5a97d8e7b41793f8ef055398d51ad4de6 # v2
 
-      - name: Validate Justfiles
+      - name: Build galena
         shell: bash
+        run: go build -o galena ./cmd/galena
+
+      - name: Validate Justfiles
+        id: validate
+        shell: bash
+        run: ./galena validate --only just
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
         run: |
-          echo "Validating justfiles in custom/ujust/ directory..."
-
-          set -xeuo pipefail
-
-          # Validate root Justfile
-          echo "::group:: Validating Justfile"
-          just --unstable --fmt --check -f Justfile
-          echo "::endgroup::"
-
-          # Validate custom ujust files
-          find "custom/ujust" -iname '*.just' -print0 | \
-            while IFS= read -r -d '' justfile ; do \
-              echo "::group:: ===$(basename "$justfile")==="
-              just --unstable --fmt --check -f "$justfile"
-              echo "::endgroup::"
-            done
-
-          echo "All justfiles are valid"
+          {
+            echo "## Justfile Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only just\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -58,6 +58,25 @@ jobs:
         shell: bash
         run: go build -o galena ./cmd/galena
 
+      - name: Setup CI environment
+        shell: bash
+        run: ./galena ci setup
+
       - name: Run validation
+        id: validate
         shell: bash
         run: ./galena validate
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## Lint Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -7,6 +7,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/iiroan/galena/internal/exec"
+	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
 )
 
@@ -46,6 +47,9 @@ func init() {
 func runSign(cmd *cobra.Command, args []string) error {
 	ctx := context.Background()
 	imageRef := args[0]
+	if err := platform.RequireLinux("signing"); err != nil {
+		return err
+	}
 
 	if err := exec.RequireCommands("cosign"); err != nil {
 		return fmt.Errorf("cosign not found: %w\nInstall with: go install github.com/sigstore/cosign/v2/cmd/cosign@latest", err)

@@ -31,5 +31,20 @@ jobs:
         run: npm install -g renovate@${RENOVATE_VERSION}
 
       - name: Validate Renovate config
+        id: validate
         shell: bash
         run: renovate-config-validator --strict
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## Renovate Config Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`renovate-config-validator --strict\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

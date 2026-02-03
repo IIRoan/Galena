@@ -23,9 +23,27 @@ jobs:
         uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5
 
       - name: Self-hosted Renovate
+        id: renovate
         uses: renovatebot/github-action@b9486682a19fe4ea2dd1263c11b4e0c1fe1838fe # v40.3.2
         with:
           configurationFile: .github/renovate.json5
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           LOG_LEVEL: 'debug'
+
+      - name: Write Renovate summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.renovate.outcome }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          {
+            echo "## Renovate Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Event | ${EVENT_NAME} |"
+            echo "| Config | .github/renovate.json5 |"
+            echo "| Log Level | debug |"
+          } >> "${GITHUB_STEP_SUMMARY}"

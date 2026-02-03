@@ -1,4 +1,4 @@
-# Default Brewfile for bluepilot
+# Default Brewfile for galena
 # Add your favorite brew packages here
 # 
 # Examples:
