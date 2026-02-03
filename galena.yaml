@@ -1,48 +1,48 @@
-name: finpilot
+name: galena
 description: OCI-native OS appliance built on Universal Blue
 registry: ghcr.io
 repository: ""
 build:
-    base_image: ghcr.io/ublue-os/silverblue-main
-    fedora_version: "42"
-    build_args: {}
-    cache_mounts:
-        - /var/cache/rpm-ostree
-        - /var/cache/libdnf5
-    timeout: 30m
-    defaults:
-        variant: main
-        tag: latest
-        build_number: 0
-        no_cache: false
-        push: false
-        sign: false
-        sbom: false
-        rechunk: false
-        dry_run: false
-        use_just: false
+  base_image: ghcr.io/ublue-os/silverblue-main
+  fedora_version: "42"
+  build_args: {}
+  cache_mounts:
+    - /var/cache/rpm-ostree
+    - /var/cache/libdnf5
+  timeout: 30m
+  defaults:
+    variant: main
+    tag: latest
+    build_number: 0
+    no_cache: false
+    push: false
+    sign: false
+    sbom: false
+    rechunk: false
+    dry_run: false
+    use_just: false
 version:
-    scheme: fedora.date.build
-    current: ""
+  scheme: fedora.date.build
+  current: ""
 variants:
-    - name: main
-      description: Standard desktop variant with GNOME
-      flavor: main
-      scripts:
-        - 10-build.sh
-      packages: []
+  - name: main
+    description: Standard desktop variant with GNOME
+    flavor: main
+    scripts:
+      - 10-build.sh
+    packages: []
 dependencies:
-    brew:
-        image: ghcr.io/ublue-os/brew
-        digest: ""
-        tag: latest
-    common:
-        image: ghcr.io/projectbluefin/common
-        digest: ""
-        tag: latest
+  brew:
+    image: ghcr.io/ublue-os/brew
+    digest: ""
+    tag: latest
+  common:
+    image: ghcr.io/projectbluefin/common
+    digest: ""
+    tag: latest
 ui:
-    theme: galena
-    show_banner: false
-    dense: false
-    no_color: false
-    advanced: false
+  theme: galena
+  show_banner: false
+  dense: false
+  no_color: false
+  advanced: false

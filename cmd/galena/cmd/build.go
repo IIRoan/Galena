@@ -439,7 +439,7 @@ func interactiveDiskBuild(ctx context.Context, rootDir string) error {
 			huh.NewInput().
 				Title("Source Image").
 				Description("Image to convert (empty for local project)").
-				Placeholder("localhost/finpilot:latest").
+				Placeholder("localhost/galena:latest").
 				Value(&diskImage),
 		),
 	}

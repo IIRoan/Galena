@@ -331,7 +331,7 @@ func (e *Environment) ImageName() string {
 	if e.RepositoryName != "" {
 		return strings.ToLower(e.RepositoryName)
 	}
-	return "finpilot"
+	return "galena"
 }
 
 // FullImageRef returns the full image reference with registry

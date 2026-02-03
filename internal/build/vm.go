@@ -175,7 +175,7 @@ func (v *VMRunner) SSH(ctx context.Context, port int, user string) error {
 	}
 
 	if user == "" {
-		user = "finpilot"
+		user = "galena"
 	}
 	if port == 0 {
 		port = 2222

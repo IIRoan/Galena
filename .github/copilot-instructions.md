@@ -1,10 +1,11 @@
-# Copilot Instructions for finpilot
+# Copilot Instructions for galena
 
 This repository uses comprehensive agent instructions. Please refer to the main documentation file:
 
 **[AGENTS.md](../AGENTS.md)** in the repository root.
 
 This file contains:
+
 - Repository structure and organization
 - Build system details and workflows
 - Package management guidelines

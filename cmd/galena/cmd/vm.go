@@ -65,7 +65,7 @@ var vmSSHCmd = &cobra.Command{
 	Short: "Connect to a running VM via SSH",
 	Long: `Connect to a running VM via SSH.
 
-By default, connects to localhost on port 2222 with the user 'finpilot'.
+By default, connects to localhost on port 2222 with the user 'galena'.
 
 Examples:
   galena vm ssh
@@ -105,7 +105,7 @@ func runVMRun(cmd *cobra.Command, args []string) error {
 
 	// Use just if requested
 	if vmUseJust {
-		image := "finpilot"
+		image := "galena"
 		if len(args) > 0 {
 			image = args[0]
 		}
@@ -150,7 +150,7 @@ func runVMSSH(cmd *cobra.Command, args []string) error {
 
 	vmRunner := build.NewVMRunner(cfg, rootDir, logger)
 
-	user := "finpilot"
+	user := "galena"
 	if len(args) > 0 {
 		user = args[0]
 	}
