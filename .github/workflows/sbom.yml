@@ -71,11 +71,9 @@ jobs:
             exit 1
           fi
 
-          image="${image_ref}@${digest}"
           echo "image_ref=${image_ref}" >> "${GITHUB_OUTPUT}"
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
           echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-          echo "image=${image}" >> "${GITHUB_OUTPUT}"
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
@@ -86,9 +84,24 @@ jobs:
 
       - name: Pull image for SBOM
         env:
-          IMAGE: ${{ steps.manifest.outputs.image }}
+          IMAGE: ${{ steps.manifest.outputs.image_ref }}
         run: |
           docker pull "${IMAGE}"
+
+      - name: Resolve repo digest
+        id: digest
+        env:
+          IMAGE_REF: ${{ steps.manifest.outputs.image_ref }}
+        run: |
+          set -euo pipefail
+          repo_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "${IMAGE_REF}")"
+          if [[ -z "${repo_digest}" ]]; then
+            echo "No repo digest found for ${IMAGE_REF}"
+            exit 1
+          fi
+          digest="${repo_digest##*@}"
+          echo "repo_digest=${repo_digest}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
 
       - name: Setup Syft
         id: setup-syft
@@ -99,7 +112,7 @@ jobs:
       - name: Generate SBOM
         id: generate-sbom
         env:
-          IMAGE: docker:${{ steps.manifest.outputs.image }}
+          IMAGE: docker:${{ steps.manifest.outputs.image_ref }}
           SBOM_SCOPE: squashed
           SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
           SYFT_PARALLELISM: "1"
@@ -172,18 +185,16 @@ jobs:
       - name: Attest SBOM
         if: steps.signing.outputs.enabled == 'true'
         env:
-          IMAGE: ${{ steps.manifest.outputs.image_ref }}
-          DIGEST: ${{ steps.manifest.outputs.digest }}
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
         run: |
-          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${IMAGE}@${DIGEST}"
+          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${{ steps.digest.outputs.repo_digest }}"
 
       - name: Write SBOM summary
         if: always()
         env:
           RUN_URL: ${{ github.event.workflow_run.html_url }}
           IMAGE: ${{ steps.manifest.outputs.image_ref }}
-          DIGEST: ${{ steps.manifest.outputs.digest }}
+          DIGEST: ${{ steps.digest.outputs.digest }}
           TAG: ${{ steps.manifest.outputs.tag }}
           SBOM_PATH: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
           RESULT: ${{ steps.generate-sbom.outcome }}
