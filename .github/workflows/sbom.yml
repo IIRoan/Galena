@@ -40,7 +40,7 @@ jobs:
           echo "run_id=${run_id}" >> "${GITHUB_OUTPUT}"
 
       - name: Download build manifest
-        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/download-artifact@v4
         with:
           name: build-manifest
           run-id: ${{ steps.run.outputs.run_id }}
