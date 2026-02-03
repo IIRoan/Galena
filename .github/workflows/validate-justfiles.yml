@@ -28,5 +28,20 @@ jobs:
         run: go build -o galena ./cmd/galena
 
       - name: Validate Justfiles
+        id: validate
         shell: bash
         run: ./galena validate --only just
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## Justfile Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only just\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

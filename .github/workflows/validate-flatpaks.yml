@@ -31,5 +31,20 @@ jobs:
         run: go build -o galena ./cmd/galena
 
       - name: Validate Flatpaks
+        id: validate
         shell: bash
         run: ./galena validate --only flatpak
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## Flatpak Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only flatpak\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

@@ -25,3 +25,18 @@ jobs:
           delete-orphaned-images: true
           keep-n-tagged: 7
           keep-n-untagged: 7
+
+      - name: Write cleanup summary
+        if: always()
+        run: |
+          {
+            echo "## Cleanup Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Package | finpilot |"
+            echo "| Older Than | 90 days |"
+            echo "| Delete Orphaned | true |"
+            echo "| Keep Tagged | 7 |"
+            echo "| Keep Untagged | 7 |"
+          } >> "${GITHUB_STEP_SUMMARY}"

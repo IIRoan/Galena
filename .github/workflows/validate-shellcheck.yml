@@ -30,5 +30,20 @@ jobs:
         run: go build -o galena ./cmd/galena
 
       - name: Validate Shell Scripts
+        id: validate
         shell: bash
         run: ./galena validate --only shellcheck
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## ShellCheck Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only shellcheck\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

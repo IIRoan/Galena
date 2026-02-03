@@ -27,5 +27,20 @@ jobs:
         run: go build -o galena ./cmd/galena
 
       - name: Validate Brewfiles
+        id: validate
         shell: bash
         run: ./galena validate --only brew
+
+      - name: Write validation summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.validate.outcome }}
+        run: |
+          {
+            echo "## Brewfile Validation Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only brew\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

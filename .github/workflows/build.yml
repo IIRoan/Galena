@@ -88,17 +88,15 @@ jobs:
       - name: Setup CI environment
         run: ${{ github.workspace }}/galena ci setup
 
-      # SBOM (OPTIONAL): Software Bill of Materials generation using Syft
+      # SBOM: Software Bill of Materials generation using Syft
       # Creates a detailed inventory of all software components in the image for supply chain security.
-      # To enable:
-      #   1. Uncomment the "Setup Syft" step below
-      #   2. Add --sbom flag to the "Build and push image" step
       # Documentation: https://github.com/anchore/syft
 
-      # - name: Setup Syft
-      #   uses: anchore/sbom-action/download-syft@v0
-      #   with:
-      #     syft-version: v1.20.0
+      - name: Setup Syft
+        uses: anchore/sbom-action/download-syft@v0
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        with:
+          syft-version: v1.20.0
 
       # These `if` statements are so that pull requests for your custom images do not make it publish any packages under your name without you knowing
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
@@ -109,6 +107,10 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
 
       - name: Build and push image
         id: build
@@ -132,23 +134,21 @@ jobs:
             SIGN_FLAG="--sign"
           fi
 
+          # Generate SBOM only when pushing
+          SBOM_FLAG=""
+          if [[ -n "${PUSH_FLAG}" ]]; then
+            SBOM_FLAG="--sbom"
+          fi
+
           # Run the build
           ${{ github.workspace }}/galena ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
             $PUSH_FLAG \
-            $SIGN_FLAG
+            $SIGN_FLAG \
+            $SBOM_FLAG
 
-      - name: Install Cosign
-        uses: sigstore/cosign-installer@v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-
-      # OPTIONAL: SBOM Attestation
+      # SBOM Attestation
       # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
-      # Requires image signing to be enabled first (see above).
-      # To enable:
-      #   1. First enable image signing (see above section)
-      #   2. Enable SBOM generation (see above section)
-      #   3. Add --sbom flag to the "Build and push image" step
       # The galena CLI will automatically attest the SBOM when both --sign and --sbom flags are used.
 
       - name: Upload build manifest
@@ -158,3 +158,55 @@ jobs:
           name: build-manifest
           path: build-manifest.json
           if-no-files-found: ignore
+
+      - name: Verify SBOM
+        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        env:
+          SBOM_PATH: ${{ steps.build.outputs.sbom }}
+        run: |
+          if [[ -z "${SBOM_PATH}" || ! -f "${SBOM_PATH}" ]]; then
+            echo "SBOM not generated or missing at ${SBOM_PATH}" >&2
+            exit 1
+          fi
+
+      - name: Upload SBOM artifact
+        if: steps.build.outputs.sbom != ''
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-spdx-json
+          path: ${{ steps.build.outputs.sbom }}
+          if-no-files-found: error
+
+      - name: Write build summary
+        if: github.event_name == 'pull_request' && always()
+        env:
+          BUILD_OUTCOME: ${{ steps.build.outcome }}
+          IMAGE: ${{ steps.build.outputs.image }}
+          TAGS: ${{ steps.build.outputs.tags }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ steps.build.outputs.version }}
+          SBOM_PATH: ${{ steps.build.outputs.sbom }}
+          PUSHED: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+        run: |
+          image_display="${IMAGE:-n/a}"
+          tags_display="${TAGS:-n/a}"
+          digest_display="${DIGEST:-n/a}"
+          version_display="${VERSION:-n/a}"
+          sbom_display="skipped"
+          if [[ -n "${SBOM_PATH}" ]]; then
+            sbom_display="${SBOM_PATH}"
+          fi
+          {
+            echo "## Build Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${BUILD_OUTCOME} |"
+            echo "| Image | \`${image_display}\` |"
+            echo "| Tags | ${tags_display} |"
+            echo "| Version | \`${version_display}\` |"
+            echo "| Digest | \`${digest_display}\` |"
+            echo "| Pushed | ${PUSHED} |"
+            echo "| Signed | ${PUSHED} |"
+            echo "| SBOM | ${sbom_display} |"
+          } >> "${GITHUB_STEP_SUMMARY}"
