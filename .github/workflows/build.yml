@@ -88,13 +88,51 @@ jobs:
       - name: Setup CI environment
         run: ${{ github.workspace }}/galena ci setup
 
+      - name: Compute build flags
+        id: flags
+        run: |
+          is_pr="false"
+          is_same_repo="false"
+          is_default_branch="false"
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            is_pr="true"
+            if [[ "${{ github.event.pull_request.head.repo.full_name }}" == "${{ github.repository }}" ]]; then
+              is_same_repo="true"
+            fi
+          fi
+
+          if [[ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]]; then
+            is_default_branch="true"
+          fi
+
+          should_push="false"
+          if [[ "${is_default_branch}" == "true" ]] || [[ "${is_pr}" == "true" && "${is_same_repo}" == "true" ]]; then
+            should_push="true"
+          fi
+
+          tags_override=""
+          if [[ "${is_pr}" == "true" && "${is_same_repo}" == "true" ]]; then
+            tags_override="testing"
+          fi
+
+          {
+            echo "is_pr=${is_pr}"
+            echo "is_same_repo=${is_same_repo}"
+            echo "is_default_branch=${is_default_branch}"
+            echo "should_push=${should_push}"
+            echo "should_sign=${should_push}"
+            echo "should_sbom=${should_push}"
+            echo "tags_override=${tags_override}"
+          } >> "${GITHUB_OUTPUT}"
+
       # SBOM: Software Bill of Materials generation using Syft
       # Creates a detailed inventory of all software components in the image for supply chain security.
       # Documentation: https://github.com/anchore/syft
 
       - name: Setup Syft
         uses: anchore/sbom-action/download-syft@v0
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: steps.flags.outputs.should_sbom == 'true'
         with:
           syft-version: v1.20.0
 
@@ -102,9 +140,7 @@ jobs:
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        if: |
-          (github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
-          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+        if: steps.flags.outputs.should_push == 'true'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -112,7 +148,7 @@ jobs:
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: steps.flags.outputs.should_sign == 'true'
 
       - name: Build and push image
         id: build
@@ -122,23 +158,20 @@ jobs:
           IMAGE_LOGO_URL: ${{ env.IMAGE_LOGO_URL }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_REGISTRY: ${{ env.IMAGE_REGISTRY }}
+          GALENA_CI_TAGS: ${{ steps.flags.outputs.tags_override }}
         run: |
-          # Determine if we should push
           PUSH_FLAG=""
-          if [[ "${{ github.event_name }}" != "pull_request" ]] && \
-             [[ "${{ github.ref }}" == "refs/heads/${{ github.event.repository.default_branch }}" ]]; then
+          if [[ "${{ steps.flags.outputs.should_push }}" == "true" ]]; then
             PUSH_FLAG="--push"
           fi
 
-          # Sign only when pushing
           SIGN_FLAG=""
-          if [[ -n "${PUSH_FLAG}" ]]; then
+          if [[ "${{ steps.flags.outputs.should_sign }}" == "true" ]]; then
             SIGN_FLAG="--sign"
           fi
 
-          # Generate SBOM only when pushing
           SBOM_FLAG=""
-          if [[ -n "${PUSH_FLAG}" ]]; then
+          if [[ "${{ steps.flags.outputs.should_sbom }}" == "true" ]]; then
             SBOM_FLAG="--sbom"
           fi
 
@@ -148,20 +181,6 @@ jobs:
             $PUSH_FLAG \
             $SIGN_FLAG \
             $SBOM_FLAG
-
-      - name: Push PR image (testing tag)
-        id: pr-push
-        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        env:
-          SOURCE_IMAGE: ${{ steps.build.outputs.image }}
-        run: |
-          if [[ -z "${SOURCE_IMAGE}" ]]; then
-            echo "Missing build image output" >&2
-            exit 1
-          fi
-          TEST_IMAGE="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
-          podman tag "${SOURCE_IMAGE}" "${TEST_IMAGE}"
-          podman push "${TEST_IMAGE}"
 
       # SBOM Attestation
       # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
@@ -176,7 +195,7 @@ jobs:
           if-no-files-found: ignore
 
       - name: Verify SBOM
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: steps.flags.outputs.should_sbom == 'true'
         env:
           SBOM_PATH: ${{ steps.build.outputs.sbom }}
         run: |
@@ -202,7 +221,8 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ steps.build.outputs.version }}
           SBOM_PATH: ${{ steps.build.outputs.sbom }}
-          PUSHED: ${{ steps.pr-push.outcome == 'success' }}
+          PUSHED: ${{ steps.flags.outputs.should_push == 'true' && steps.build.outcome == 'success' }}
+          SIGNED: ${{ steps.flags.outputs.should_sign == 'true' && steps.build.outcome == 'success' }}
         run: |
           image_display="${IMAGE:-n/a}"
           tags_display="${TAGS:-n/a}"
@@ -224,7 +244,7 @@ jobs:
             echo "| Version | \`${version_display}\` |"
             echo "| Digest | \`${digest_display}\` |"
             echo "| Pushed | ${PUSHED} |"
-            echo "| Signed | false |"
+            echo "| Signed | ${SIGNED} |"
             echo "| Testing Tag | \`${test_image}\` |"
             echo "| SBOM | ${sbom_display} |"
           } >> "${GITHUB_STEP_SUMMARY}"

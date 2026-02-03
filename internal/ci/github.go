@@ -192,6 +192,23 @@ func AddSummary(markdown string) error {
 // GenerateTags generates image tags based on CI environment
 // Matches the original workflow: stable, stable.YYYYMMDD, YYYYMMDD, and PR-specific tags
 func (e *Environment) GenerateTags(defaultTag string) []string {
+	if override := os.Getenv("GALENA_CI_TAGS"); override != "" {
+		parts := strings.FieldsFunc(override, func(r rune) bool {
+			return r == ',' || r == ' ' || r == '\t' || r == '\n'
+		})
+		overrideTags := []string{}
+		for _, tag := range parts {
+			tag = strings.TrimSpace(tag)
+			if tag == "" {
+				continue
+			}
+			overrideTags = append(overrideTags, sanitizeTag(tag))
+		}
+		if len(overrideTags) > 0 {
+			return overrideTags
+		}
+	}
+
 	tags := []string{}
 	now := time.Now()
 	dateTag := now.Format("20060102")
