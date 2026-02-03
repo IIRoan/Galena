@@ -297,6 +297,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 				"duration", saveResult.Duration,
 				"stderr", exec.LastNLines(saveResult.Stderr, 20),
 			)
+		} else if info, err := os.Stat(ociArchivePath); err == nil {
+			logger.Info("sbom archive created", "path", ociArchivePath, "bytes", info.Size())
 		}
 		defer func() {
 			_ = os.Remove(ociArchivePath)
