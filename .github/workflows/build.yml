@@ -24,7 +24,7 @@ env:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
-  cancel-in-progress: ${{ github.event_name != 'pull_request' }}
+  cancel-in-progress: false
 
 jobs:
   build_push:
@@ -192,7 +192,6 @@ jobs:
           tags_display="${TAGS:-n/a}"
           digest_display="${DIGEST:-n/a}"
           version_display="${VERSION:-n/a}"
-          sbom_display="handled in SBOM job"
           test_image="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
           {
             echo "## Build Summary"
@@ -207,7 +206,6 @@ jobs:
             echo "| Pushed | ${PUSHED} |"
             echo "| Signed | ${SIGNED} |"
             echo "| Testing Tag | \`${test_image}\` |"
-            echo "| SBOM | ${sbom_display} |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
   sbom:
@@ -215,6 +213,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build_push
     if: needs.build_push.outputs.should_sbom == 'true'
+    timeout-minutes: 60
 
     permissions:
       contents: read
@@ -240,6 +239,8 @@ jobs:
           STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
           XDG_CACHE_HOME: ${{ github.workspace }}/.cache
           TMPDIR: ${{ github.workspace }}/.cache/tmp
+          SYFT_PARALLELISM: "1"
+          SYFT_CHECK_FOR_APP_UPDATE: "false"
         run: |
           mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
           OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
