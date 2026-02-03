@@ -272,20 +272,45 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			ci.EndGroup()
 		}
 
-		// Generate SBOM if requested
-		if ciSBOM && exec.CheckCommand("syft") {
-			ci.StartGroup("Generating SBOM")
+	// Generate SBOM if requested
+	if ciSBOM && exec.CheckCommand("syft") {
+		ci.StartGroup("Generating SBOM")
 
-			sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
-			logger.Info("generating SBOM", "output", sbomPath)
+		if versionResult := exec.Syft(ctx, "--version"); versionResult.Err == nil {
+			logger.Info("syft", "version", strings.TrimSpace(versionResult.Stdout))
+		}
 
-			syftResult := exec.Syft(ctx, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
-			if syftResult.Err != nil {
-				ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", syftResult.Err))
-			} else {
-				setCIOutput("sbom", sbomPath)
+		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
+		localImageRef := fmt.Sprintf("podman:%s:%s", imageName, primaryTag)
+		logger.Info("generating SBOM", "image", localImageRef, "output", sbomPath)
 
-				// Attest SBOM if signing is enabled
+		syftResult := exec.Syft(ctx, "scan", localImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+		if syftResult.Err != nil {
+			logger.Warn("syft scan failed",
+				"image", localImageRef,
+				"exit_code", syftResult.ExitCode,
+				"duration", syftResult.Duration,
+				"stderr", exec.LastNLines(syftResult.Stderr, 20),
+			)
+			if syftResult.ExitCode == 143 {
+				ci.LogWarning("SBOM generation terminated (exit 143). This often indicates the runner canceled the process or the job was superseded by a newer run.")
+			}
+
+			logger.Info("retrying SBOM with registry image", "image", fullImageRef)
+			syftResult = exec.Syft(ctx, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+		}
+		if syftResult.Err != nil {
+			logger.Warn("syft scan failed",
+				"image", fullImageRef,
+				"exit_code", syftResult.ExitCode,
+				"duration", syftResult.Duration,
+				"stderr", exec.LastNLines(syftResult.Stderr, 20),
+			)
+			ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", syftResult.Err))
+		} else {
+			setCIOutput("sbom", sbomPath)
+
+			// Attest SBOM if signing is enabled
 				if ciSign && exec.CheckCommand("cosign") {
 					logger.Info("attesting SBOM")
 					attestResult := exec.Cosign(ctx, "attest", "--yes", "--predicate", sbomPath, "--type", "spdxjson", fmt.Sprintf("%s/%s@%s", registry, imageName, digest))
