@@ -4,6 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
 
 	"github.com/iiroan/galena/internal/exec"
 )
@@ -31,6 +34,13 @@ func ensureSyftEnv(rootDir string) []string {
 	if os.Getenv("TMPDIR") == "" {
 		env = append(env, "TMPDIR="+tmpDir)
 	}
+	if os.Getenv("SYFT_CHECK_FOR_APP_UPDATE") == "" {
+		env = append(env, "SYFT_CHECK_FOR_APP_UPDATE=false")
+	}
+	if os.Getenv("SYFT_PARALLELISM") == "" {
+		parallelism := defaultSyftParallelism()
+		env = append(env, "SYFT_PARALLELISM="+strconv.Itoa(parallelism))
+	}
 	return env
 }
 
@@ -38,4 +48,31 @@ func runSyft(ctx context.Context, env []string, args ...string) *exec.Result {
 	opts := exec.DefaultOptions()
 	opts.Env = env
 	return exec.Run(ctx, "syft", args, opts)
+}
+
+func resolveSBOMScope() string {
+	if scope := strings.TrimSpace(os.Getenv("GALENA_SBOM_SCOPE")); scope != "" {
+		return scope
+	}
+	if scope := strings.TrimSpace(os.Getenv("SYFT_SCOPE")); scope != "" {
+		return scope
+	}
+	if os.Getenv("CI") == "true" {
+		return "squashed"
+	}
+	return "all-layers"
+}
+
+func defaultSyftParallelism() int {
+	cpus := runtime.NumCPU()
+	if os.Getenv("CI") == "true" {
+		if cpus > 2 {
+			return 2
+		}
+		return 1
+	}
+	if cpus > 0 {
+		return cpus
+	}
+	return 1
 }

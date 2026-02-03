@@ -98,12 +98,13 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		defer stopPodmanService()
 	}
 
+	scope := resolveSBOMScope()
 	if exec.CheckCommand("syft") {
-		if err := generateSBOMWithSyft(ctx, imageRef, outputFile, localImage, rootDir); err != nil {
+		if err := generateSBOMWithSyft(ctx, imageRef, outputFile, localImage, rootDir, scope); err != nil {
 			return err
 		}
 	} else {
-		if err := generateSBOMWithContainer(ctx, imageRef, outputFile, localImage, rootDir); err != nil {
+		if err := generateSBOMWithContainer(ctx, imageRef, outputFile, localImage, rootDir, scope); err != nil {
 			return err
 		}
 	}
@@ -149,18 +150,19 @@ func ensureLocalImage(ctx context.Context, imageRef string) (string, bool) {
 	return "", false
 }
 
-func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
+func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string, scope string) error {
 	syftEnv := ensureSyftEnv(rootDir)
 	logger.Info("generating SBOM",
 		"image", imageRef,
 		"format", sbomFormat,
 		"output", outputFile,
+		"scope", scope,
 	)
 
 	if localImage && exec.CheckCommand("podman") && os.Getenv("CONTAINER_HOST") != "" {
 		podmanImageRef := "podman:" + imageRef
 		logger.Info("syft scan via podman engine", "image", podmanImageRef)
-		result := runSyft(ctx, syftEnv, "scan", podmanImageRef, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
+		result := runSyft(ctx, syftEnv, "scan", podmanImageRef, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
 		if result.Err == nil {
 			logger.Info("SBOM generated", "output", outputFile)
 			return nil
@@ -176,7 +178,7 @@ func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, loca
 				_ = os.Remove(ociArchivePath)
 			}()
 			logger.Info("syft scan via oci-archive", "path", ociArchivePath)
-			result := runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
+			result := runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
 			if result.Err == nil {
 				logger.Info("SBOM generated", "output", outputFile)
 				return nil
@@ -187,7 +189,7 @@ func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, loca
 		}
 	}
 
-	result := runSyft(ctx, syftEnv, "scan", imageRef, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
+	result := runSyft(ctx, syftEnv, "scan", imageRef, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
 	if result.Err != nil {
 		logger.Error("SBOM generation failed", "stderr", exec.LastNLines(result.Stderr, 20))
 		return fmt.Errorf("SBOM generation failed: %w", result.Err)
@@ -197,7 +199,7 @@ func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, loca
 	return nil
 }
 
-func generateSBOMWithContainer(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
+func generateSBOMWithContainer(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string, scope string) error {
 	if !exec.CheckCommand("podman") {
 		msg := "syft not found and podman unavailable; cannot generate SBOM"
 		logger.Error(msg)
@@ -228,6 +230,7 @@ func generateSBOMWithContainer(ctx context.Context, imageRef, outputFile string,
 		"-w", rootDir,
 		"ghcr.io/anchore/syft:latest",
 		"scan", target,
+		"--scope", scope,
 		"-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile),
 	}
 	result := exec.Podman(ctx, args...)

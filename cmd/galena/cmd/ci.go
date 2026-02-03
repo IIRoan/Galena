@@ -277,6 +277,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			ci.StartGroup("Generating SBOM")
 
 			syftEnv := ensureSyftEnv(rootDir)
+			scope := resolveSBOMScope()
 
 			if versionResult := exec.Syft(ctx, "--version"); versionResult.Err == nil {
 				logger.Info("syft", "version", strings.TrimSpace(versionResult.Stdout))
@@ -294,8 +295,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			var syftResult *exec.Result
 			if containerHost != "" {
 				podmanImageRef := fmt.Sprintf("podman:%s", localImageRef)
-				logger.Info("syft scan via podman engine", "image", podmanImageRef)
-				syftResult = runSyft(ctx, syftEnv, "scan", podmanImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+				logger.Info("syft scan via podman engine", "image", podmanImageRef, "scope", scope)
+				syftResult = runSyft(ctx, syftEnv, "scan", podmanImageRef, "--scope", scope, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
 				if syftResult.Err != nil {
 					logger.Warn("syft scan failed",
 						"image", podmanImageRef,
@@ -321,8 +322,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 					logger.Info("sbom archive created", "path", ociArchivePath, "bytes", info.Size())
 				}
 				if saveResult.Err == nil {
-					logger.Info("syft scan via oci-archive", "path", ociArchivePath)
-					syftResult = runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+					logger.Info("syft scan via oci-archive", "path", ociArchivePath, "scope", scope)
+					syftResult = runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "--scope", scope, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
 				}
 			}
 
@@ -337,8 +338,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			}
 
 			if syftResult == nil || syftResult.Err != nil {
-				logger.Info("retrying SBOM with registry image", "image", fullImageRef)
-				syftResult = runSyft(ctx, syftEnv, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+				logger.Info("retrying SBOM with registry image", "image", fullImageRef, "scope", scope)
+				syftResult = runSyft(ctx, syftEnv, "scan", fullImageRef, "--scope", scope, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
 			}
 
 			if syftResult.Err != nil {
