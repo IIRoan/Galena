@@ -216,11 +216,9 @@ jobs:
     timeout-minutes: 180
 
     permissions:
-      contents: read
+      contents: write
+      packages: read
       id-token: write
-
-    outputs:
-      sbom_path: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
 
     steps:
       - name: Setup Syft
@@ -235,32 +233,39 @@ jobs:
           IMAGE: ${{ needs.build_push.outputs.image }}
           SBOM_SCOPE: squashed
           SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
+          SYFT_PARALLELISM: "2"
+          SYFT_LOG_LEVEL: info
+          SYFT_REGISTRY_AUTH_AUTHORITY: ghcr.io
+          SYFT_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
+          SYFT_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
           SYFT_CACHE_DIR: ${{ github.workspace }}/.cache/syft
           STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
           XDG_CACHE_HOME: ${{ github.workspace }}/.cache
           TMPDIR: ${{ github.workspace }}/.cache/tmp
-          SYFT_PARALLELISM: "2"
-          SYFT_CHECK_FOR_APP_UPDATE: "false"
         run: |
+          set -euo pipefail
           mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
           OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
+
           heartbeat() {
             while true; do
-              echo "SBOM scan still running at $(date -u +%H:%M:%S)"
+              echo "SBOM generation in progress ($(date -u +%H:%M:%S) UTC)..."
               sleep 60
             done
           }
-          heartbeat &
-          HEARTBEAT_PID=$!
-          trap 'kill ${HEARTBEAT_PID}' EXIT
-          ${SYFT_CMD} scan "${IMAGE}" --scope "${SBOM_SCOPE}" -o "spdx-json=${OUTPUT_PATH}"
+
+          heartbeat & HB_PID=$!
+          trap 'kill "${HB_PID}" >/dev/null 2>&1 || true' EXIT
+
+          "${SYFT_CMD}" scan --from registry "${IMAGE}" --scope "${SBOM_SCOPE}" -o "spdx-json=${OUTPUT_PATH}"
           echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
 
       - name: Upload SBOM artifact
+        if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-spdx-json
-          path: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+          path: ${{ runner.temp }}/sbom.spdx.json
           if-no-files-found: error
 
       - name: Install Cosign
