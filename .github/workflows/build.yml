@@ -219,22 +219,17 @@ jobs:
           IMAGE: ${{ needs.build_push.outputs.image }}
           TAGS: ${{ needs.build_push.outputs.tags }}
           DIGEST: ${{ needs.build_push.outputs.digest }}
-          VERSION: ${{ needs.build_push.outputs.version }}
           PUSHED: ${{ needs.build_push.outputs.should_push }}
           SIGNED: ${{ needs.build_push.outputs.should_sign }}
         run: |
           {
             echo "## Workflow Summary"
             echo ""
-            echo "| Stage | Result |"
-            echo "| --- | --- |"
-            echo "| Build + Push | ${BUILD_RESULT} |"
-            echo ""
             echo "| Property | Value |"
             echo "| --- | --- |"
+            echo "| Build Result | ${BUILD_RESULT} |"
             echo "| Image | \`${IMAGE}\` |"
             echo "| Tags | ${TAGS} |"
-            echo "| Version | \`${VERSION}\` |"
             echo "| Digest | \`${DIGEST}\` |"
             echo "| Pushed | ${PUSHED} |"
             echo "| Signed | ${SIGNED} |"
