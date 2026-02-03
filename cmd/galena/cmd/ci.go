@@ -281,11 +281,32 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
-		localImageRef := fmt.Sprintf("podman:%s:%s", imageName, primaryTag)
-		logger.Info("generating SBOM", "image", localImageRef, "output", sbomPath)
+		localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
+		ociArchivePath := filepath.Join(rootDir, "sbom-image.oci.tar")
+		logger.Info("generating SBOM",
+			"image", localImageRef,
+			"output", sbomPath,
+			"container_host", os.Getenv("CONTAINER_HOST"),
+		)
 
-		syftResult := exec.Syft(ctx, "scan", localImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
-		if syftResult.Err != nil {
+		saveResult := exec.Podman(ctx, "image", "save", "--format", "oci-archive", "-o", ociArchivePath, localImageRef)
+		if saveResult.Err != nil {
+			logger.Warn("podman image save failed",
+				"image", localImageRef,
+				"exit_code", saveResult.ExitCode,
+				"duration", saveResult.Duration,
+				"stderr", exec.LastNLines(saveResult.Stderr, 20),
+			)
+		}
+		defer func() {
+			_ = os.Remove(ociArchivePath)
+		}()
+
+		var syftResult *exec.Result
+		if saveResult.Err == nil {
+			syftResult = exec.Syft(ctx, "scan", "oci-archive:"+ociArchivePath, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
+		}
+		if syftResult != nil && syftResult.Err != nil {
 			logger.Warn("syft scan failed",
 				"image", localImageRef,
 				"exit_code", syftResult.ExitCode,
@@ -295,10 +316,13 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			if syftResult.ExitCode == 143 {
 				ci.LogWarning("SBOM generation terminated (exit 143). This often indicates the runner canceled the process or the job was superseded by a newer run.")
 			}
+		}
 
+		if syftResult == nil || syftResult.Err != nil {
 			logger.Info("retrying SBOM with registry image", "image", fullImageRef)
 			syftResult = exec.Syft(ctx, "scan", fullImageRef, "-o", fmt.Sprintf("spdx-json=%s", sbomPath))
 		}
+
 		if syftResult.Err != nil {
 			logger.Warn("syft scan failed",
 				"image", fullImageRef,
