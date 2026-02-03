@@ -43,7 +43,6 @@ jobs:
       version: ${{ steps.build.outputs.version }}
       should_push: ${{ steps.flags.outputs.should_push }}
       should_sign: ${{ steps.flags.outputs.should_sign }}
-      should_sbom: ${{ steps.flags.outputs.should_sbom }}
 
     steps:
       - name: Prepare environment
@@ -125,7 +124,6 @@ jobs:
             echo "is_default_branch=${is_default_branch}"
             echo "should_push=${should_push}"
             echo "should_sign=${should_push}"
-            echo "should_sbom=${should_push}"
             echo "tags_override=${tags_override}"
           } >> "${GITHUB_OUTPUT}"
 
@@ -208,108 +206,16 @@ jobs:
             echo "| Testing Tag | \`${test_image}\` |"
           } >> "${GITHUB_STEP_SUMMARY}"
 
-  sbom:
-    name: Generate SBOM
-    runs-on: ubuntu-24.04
-    needs: build_push
-    if: needs.build_push.outputs.should_sbom == 'true'
-    timeout-minutes: 180
-
-    permissions:
-      contents: write
-      packages: read
-      id-token: write
-
-    steps:
-      - name: Setup Syft
-        id: setup-syft
-        uses: anchore/sbom-action/download-syft@v0
-        with:
-          syft-version: v1.20.0
-
-      - name: Generate SBOM
-        id: generate-sbom
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-          SBOM_SCOPE: squashed
-          SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
-          SYFT_PARALLELISM: "2"
-          SYFT_LOG_LEVEL: info
-          SYFT_REGISTRY_AUTH_AUTHORITY: ghcr.io
-          SYFT_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
-          SYFT_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          SYFT_CACHE_DIR: ${{ github.workspace }}/.cache/syft
-          STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
-          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
-          TMPDIR: ${{ github.workspace }}/.cache/tmp
-        run: |
-          set -euo pipefail
-          mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
-          OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
-
-          heartbeat() {
-            while true; do
-              echo "SBOM generation in progress ($(date -u +%H:%M:%S) UTC)..."
-              sleep 60
-            done
-          }
-
-          heartbeat & HB_PID=$!
-          trap 'kill "${HB_PID}" >/dev/null 2>&1 || true' EXIT
-
-          "${SYFT_CMD}" scan --from registry "${IMAGE}" --scope "${SBOM_SCOPE}" -o "spdx-json=${OUTPUT_PATH}"
-          echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
-
-      - name: Upload SBOM artifact
-        if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
-        with:
-          name: sbom-spdx-json
-          path: ${{ runner.temp }}/sbom.spdx.json
-          if-no-files-found: error
-
-      - name: Install Cosign
-        if: needs.build_push.outputs.should_sign == 'true'
-        uses: sigstore/cosign-installer@v3
-
-      - name: Attest SBOM
-        if: needs.build_push.outputs.should_sign == 'true'
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-          DIGEST: ${{ needs.build_push.outputs.digest }}
-        run: |
-          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${IMAGE}@${DIGEST}"
-
-      - name: Write SBOM summary
-        if: always()
-        env:
-          IMAGE: ${{ needs.build_push.outputs.image }}
-          SBOM_PATH: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
-          RESULT: ${{ steps.generate-sbom.outcome }}
-        run: |
-          {
-            echo "## SBOM Summary"
-            echo ""
-            echo "| Property | Value |"
-            echo "| --- | --- |"
-            echo "| Outcome | ${RESULT} |"
-            echo "| Image | \`${IMAGE}\` |"
-            echo "| Scope | squashed |"
-            echo "| SBOM Path | \`${SBOM_PATH}\` |"
-          } >> "${GITHUB_STEP_SUMMARY}"
-
   workflow_summary:
     name: Workflow Summary
     runs-on: ubuntu-24.04
     needs:
       - build_push
-      - sbom
     if: always()
     steps:
       - name: Write workflow summary
         env:
           BUILD_RESULT: ${{ needs.build_push.result }}
-          SBOM_RESULT: ${{ needs.sbom.result }}
           IMAGE: ${{ needs.build_push.outputs.image }}
           TAGS: ${{ needs.build_push.outputs.tags }}
           DIGEST: ${{ needs.build_push.outputs.digest }}
@@ -323,7 +229,6 @@ jobs:
             echo "| Stage | Result |"
             echo "| --- | --- |"
             echo "| Build + Push | ${BUILD_RESULT} |"
-            echo "| SBOM | ${SBOM_RESULT} |"
             echo ""
             echo "| Property | Value |"
             echo "| --- | --- |"

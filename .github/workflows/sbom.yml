@@ -1,0 +1,191 @@
+---
+name: Generate SBOM
+on:
+  workflow_run:
+    workflows:
+      - Build container image
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: "Workflow run ID to pull build-manifest from"
+        required: false
+
+concurrency:
+  group: sbom-${{ github.event.workflow_run.id || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  sbom:
+    name: Generate SBOM
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+
+    permissions:
+      actions: read
+      contents: write
+      packages: read
+      id-token: write
+
+    steps:
+      - name: Resolve run ID
+        id: run
+        run: |
+          run_id="${{ github.event.workflow_run.id }}"
+          if [[ -n "${{ inputs.run_id }}" ]]; then
+            run_id="${{ inputs.run_id }}"
+          fi
+          echo "run_id=${run_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Download build manifest
+        uses: actions/download-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: build-manifest
+          run-id: ${{ steps.run.outputs.run_id }}
+          path: ${{ github.workspace }}/artifacts
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Parse build manifest
+        id: manifest
+        run: |
+          set -euo pipefail
+          manifest_path="${{ github.workspace }}/artifacts/build-manifest.json"
+          if [[ ! -f "${manifest_path}" ]]; then
+            echo "build-manifest.json not found at ${manifest_path}"
+            exit 1
+          fi
+
+          image_ref="$(jq -r '.version.image_ref' "${manifest_path}")"
+          digest="$(jq -r '.images[0].digest' "${manifest_path}")"
+          tag="$(jq -r '.images[0].tag' "${manifest_path}")"
+
+          if [[ -z "${image_ref}" || "${image_ref}" == "null" ]]; then
+            echo "image_ref missing in build-manifest.json"
+            exit 1
+          fi
+
+          if [[ -z "${digest}" || "${digest}" == "null" ]]; then
+            echo "digest missing in build-manifest.json"
+            exit 1
+          fi
+
+          image="${image_ref}@${digest}"
+          echo "image_ref=${image_ref}" >> "${GITHUB_OUTPUT}"
+          echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
+          echo "image=${image}" >> "${GITHUB_OUTPUT}"
+
+      - name: Setup Syft
+        id: setup-syft
+        uses: anchore/sbom-action/download-syft@v0
+        with:
+          syft-version: v1.20.0
+
+      - name: Generate SBOM
+        id: generate-sbom
+        env:
+          IMAGE: ${{ steps.manifest.outputs.image }}
+          SBOM_SCOPE: squashed
+          SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
+          SYFT_PARALLELISM: "1"
+          SYFT_LOG_LEVEL: info
+          SYFT_FILE_METADATA_SELECTION: none
+          SYFT_REGISTRY_AUTH_AUTHORITY: ghcr.io
+          SYFT_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
+          SYFT_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+          SYFT_CACHE_DIR: ${{ github.workspace }}/.cache/syft
+          STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
+          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
+          TMPDIR: ${{ github.workspace }}/.cache/tmp
+        run: |
+          set -euo pipefail
+          mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
+          OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
+
+          heartbeat() {
+            while true; do
+              echo "SBOM generation in progress ($(date -u +%H:%M:%S) UTC)..."
+              sleep 60
+            done
+          }
+
+          heartbeat & HB_PID=$!
+          trap 'kill "${HB_PID}" >/dev/null 2>&1 || true' EXIT
+
+          remove_catalogers=(file)
+          if "${SYFT_CMD}" cataloger list | grep -q "wordpress-plugins-cataloger"; then
+            remove_catalogers+=(wordpress-plugins-cataloger)
+          fi
+
+          select_args=()
+          if ((${#remove_catalogers[@]})); then
+            select_expr="$(printf ",-%s" "${remove_catalogers[@]}")"
+            select_expr="${select_expr#,}"
+            echo "Removing catalogers: ${select_expr}"
+            select_args=(--select-catalogers "${select_expr}")
+          fi
+
+          "${SYFT_CMD}" scan \
+            --from registry \
+            --scope "${SBOM_SCOPE}" \
+            "${select_args[@]}" \
+            "${IMAGE}" \
+            -o "spdx-json=${OUTPUT_PATH}"
+          echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
+
+      - name: Upload SBOM artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: sbom-spdx-json
+          path: ${{ runner.temp }}/sbom.spdx.json
+          if-no-files-found: error
+
+      - name: Check signing secret
+        id: signing
+        run: |
+          if [[ -n "${{ secrets.SIGNING_SECRET }}" ]]; then
+            echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          else
+            echo "enabled=false" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Install Cosign
+        if: steps.signing.outputs.enabled == 'true'
+        uses: sigstore/cosign-installer@v3
+
+      - name: Attest SBOM
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          IMAGE: ${{ steps.manifest.outputs.image_ref }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+        run: |
+          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${IMAGE}@${DIGEST}"
+
+      - name: Write SBOM summary
+        if: always()
+        env:
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          IMAGE: ${{ steps.manifest.outputs.image_ref }}
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          TAG: ${{ steps.manifest.outputs.tag }}
+          SBOM_PATH: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+          RESULT: ${{ steps.generate-sbom.outcome }}
+        run: |
+          {
+            echo "## SBOM Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${RESULT} |"
+            echo "| Image | \`${IMAGE}\` |"
+            echo "| Tag | \`${TAG}\` |"
+            echo "| Digest | \`${DIGEST}\` |"
+            echo "| SBOM Path | \`${SBOM_PATH}\` |"
+            if [[ -n "${RUN_URL}" ]]; then
+              echo "| Build Run | ${RUN_URL} |"
+            fi
+          } >> "${GITHUB_STEP_SUMMARY}"
