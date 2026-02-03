@@ -213,7 +213,7 @@ jobs:
     runs-on: ubuntu-24.04
     needs: build_push
     if: needs.build_push.outputs.should_sbom == 'true'
-    timeout-minutes: 60
+    timeout-minutes: 180
 
     permissions:
       contents: read
@@ -239,11 +239,20 @@ jobs:
           STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
           XDG_CACHE_HOME: ${{ github.workspace }}/.cache
           TMPDIR: ${{ github.workspace }}/.cache/tmp
-          SYFT_PARALLELISM: "1"
+          SYFT_PARALLELISM: "2"
           SYFT_CHECK_FOR_APP_UPDATE: "false"
         run: |
           mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
           OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
+          heartbeat() {
+            while true; do
+              echo "SBOM scan still running at $(date -u +%H:%M:%S)"
+              sleep 60
+            done
+          }
+          heartbeat &
+          HEARTBEAT_PID=$!
+          trap 'kill ${HEARTBEAT_PID}' EXIT
           ${SYFT_CMD} scan "${IMAGE}" --scope "${SBOM_SCOPE}" -o "spdx-json=${OUTPUT_PATH}"
           echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
 
