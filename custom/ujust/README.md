@@ -186,11 +186,37 @@ Universal Blue images include helpers in `/usr/lib/ujust/ujust.sh`:
 
 Test locally before committing:
 
-1. Build your image: `just build` (see [`Justfile`](../../Justfile))
-2. If on a bootc system: `sudo bootc switch --target localhost/galena:stable`
-3. Reboot and test: `ujust your-command`
+### Option 1: Using the galena CLI (Recommended)
 
-Or test the just files directly:
+```bash
+# Build the container image
+./galena build
+
+# Build a VM image and test
+./galena disk qcow2
+./galena vm run
+
+# Or use the fast build workflow
+./galena  # Choose "Fast Build" from the interactive menu
+```
+
+### Option 2: Using bootc switch (if on a bootc system)
+
+```bash
+# Build locally
+./galena build
+
+# Switch to your local build
+sudo bootc switch --target localhost/galena:latest
+
+# Reboot and test
+sudo systemctl reboot
+
+# After reboot, test your commands
+ujust your-command
+```
+
+### Option 3: Test just files directly
 
 ```bash
 just --justfile custom/ujust/custom-apps.just --list
