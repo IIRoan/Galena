@@ -102,7 +102,9 @@ jobs:
       # They also check if the runner is on the default branch so that things like the merge queue (if you enable it), are going to work
       - name: Login to GitHub Container Registry
         uses: docker/login-action@74a5d142397b4f367a81961eba4e8cd7edddf772 # v3
-        if: github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        if: |
+          (github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) ||
+          (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -147,6 +149,20 @@ jobs:
             $SIGN_FLAG \
             $SBOM_FLAG
 
+      - name: Push PR image (testing tag)
+        id: pr-push
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          SOURCE_IMAGE: ${{ steps.build.outputs.image }}
+        run: |
+          if [[ -z "${SOURCE_IMAGE}" ]]; then
+            echo "Missing build image output" >&2
+            exit 1
+          fi
+          TEST_IMAGE="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
+          podman tag "${SOURCE_IMAGE}" "${TEST_IMAGE}"
+          podman push "${TEST_IMAGE}"
+
       # SBOM Attestation
       # Attaches SBOM (Software Bill of Materials) to your signed image for supply chain security.
       # The galena CLI will automatically attest the SBOM when both --sign and --sbom flags are used.
@@ -186,7 +202,7 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
           VERSION: ${{ steps.build.outputs.version }}
           SBOM_PATH: ${{ steps.build.outputs.sbom }}
-          PUSHED: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          PUSHED: ${{ steps.pr-push.outcome == 'success' }}
         run: |
           image_display="${IMAGE:-n/a}"
           tags_display="${TAGS:-n/a}"
@@ -196,6 +212,7 @@ jobs:
           if [[ -n "${SBOM_PATH}" ]]; then
             sbom_display="${SBOM_PATH}"
           fi
+          test_image="${IMAGE_REGISTRY}/${IMAGE_NAME}:testing"
           {
             echo "## Build Summary"
             echo ""
@@ -207,6 +224,7 @@ jobs:
             echo "| Version | \`${version_display}\` |"
             echo "| Digest | \`${digest_display}\` |"
             echo "| Pushed | ${PUSHED} |"
-            echo "| Signed | ${PUSHED} |"
+            echo "| Signed | false |"
+            echo "| Testing Tag | \`${test_image}\` |"
             echo "| SBOM | ${sbom_display} |"
           } >> "${GITHUB_STEP_SUMMARY}"
