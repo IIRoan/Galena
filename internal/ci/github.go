@@ -299,10 +299,21 @@ func (e *Environment) GenerateLabels(imageName string, cfg LabelConfig) map[stri
 	}
 
 	if e.Repository != "" {
-		labels["org.opencontainers.image.source"] = fmt.Sprintf("https://github.com/%s/blob/%s/Containerfile", e.Repository, e.SHA)
-		labels["org.opencontainers.image.url"] = fmt.Sprintf("https://github.com/%s/tree/%s", e.Repository, e.SHA)
-		labels["org.opencontainers.image.documentation"] = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/README.md", e.Repository, e.SHA)
-		labels["io.artifacthub.package.readme-url"] = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/README.md", e.Repository, e.SHA)
+		ref := e.SHA
+		if ref == "" {
+			ref = "main"
+		}
+		// If we're in a PR, use the SHA, otherwise use the branch name for more persistent links
+		if e.IsPullRequest {
+			ref = e.SHA
+		} else {
+			ref = e.RefName
+		}
+		
+		labels["org.opencontainers.image.source"] = fmt.Sprintf("https://github.com/%s/blob/%s/Containerfile", e.Repository, ref)
+		labels["org.opencontainers.image.url"] = fmt.Sprintf("https://github.com/%s/tree/%s", e.Repository, ref)
+		labels["org.opencontainers.image.documentation"] = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/README.md", e.Repository, ref)
+		labels["io.artifacthub.package.readme-url"] = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/README.md", e.Repository, ref)
 	}
 
 	if e.SHA != "" {

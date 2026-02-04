@@ -123,8 +123,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 	if ciSign && !exec.CheckCommand("cosign") {
 		return fmt.Errorf("cosign is required for --sign (install with: go install github.com/sigstore/cosign/v2/cmd/cosign@latest)")
 	}
-	if ciSBOM && !exec.CheckCommand("trivy") {
-		return fmt.Errorf("trivy is required for --sbom (install with: https://github.com/aquasecurity/trivy)")
+	if ciSBOM && !exec.CheckCommand("trivy") && !exec.CheckCommand("podman") {
+		return fmt.Errorf("trivy or podman is required for --sbom")
 	}
 
 	// Generate tags
@@ -234,6 +234,32 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		logger.Info("skipping push for pull request")
 	}
 
+	// Generate SBOM if requested (always run if flag is set, even if not pushing)
+	if ciSBOM {
+		ci.StartGroup("Generating SBOM")
+
+		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
+		localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
+		
+		var err error
+		if exec.CheckCommand("trivy") {
+			if versionResult := exec.Trivy(ctx, "--version"); versionResult.Err == nil {
+				logger.Info("trivy", "version", strings.TrimSpace(versionResult.Stdout))
+			}
+			err = generateSBOMWithTrivy(ctx, localImageRef, sbomPath, true, rootDir)
+		} else {
+			err = generateSBOMWithTrivyContainer(ctx, localImageRef, sbomPath, true, rootDir)
+		}
+
+		if err != nil {
+			ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", err))
+		} else {
+			setCIOutput("sbom", sbomPath)
+		}
+
+		ci.EndGroup()
+	}
+
 	if shouldPush {
 		ci.StartGroup("Pushing Image")
 
@@ -255,9 +281,9 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		digest = strings.TrimSpace(digestResult.Stdout)
 		setCIOutput("digest", digest)
 
-		// Sign if requested
+		// Sign and attest if requested
 		if ciSign && exec.CheckCommand("cosign") {
-			ci.StartGroup("Signing Image")
+			ci.StartGroup("Signing and Attesting")
 
 			for _, tag := range tags {
 				imageRef := fmt.Sprintf("%s/%s:%s", registry, imageName, tag)
@@ -265,67 +291,17 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 
 				signResult := exec.Cosign(ctx, "sign", "--yes", imageRef)
 				if signResult.Err != nil {
-					ci.LogWarning(fmt.Sprintf("Signing failed for %s: %v", imageRef, signResult.Err))
+					ci.LogWarning(fmt.Sprintf("Signing failed for %s: %v", signResult.Err))
 				}
 			}
 
-			ci.EndGroup()
-		}
-
-		// Generate SBOM if requested
-		if ciSBOM && exec.CheckCommand("trivy") {
-			ci.StartGroup("Generating SBOM")
-
-			trivyEnv := ensureTrivyEnv(rootDir)
-
-			if versionResult := exec.Trivy(ctx, "--version"); versionResult.Err == nil {
-				logger.Info("trivy", "version", strings.TrimSpace(versionResult.Stdout))
-			}
-
+			// Attest SBOM if generated
 			sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
-			localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
-			logger.Info("generating SBOM",
-				"image", localImageRef,
-				"output", sbomPath,
-			)
-
-			archivePath := filepath.Join(rootDir, "sbom-image.tar")
-			saveResult := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, localImageRef)
-			var trivyResult *exec.Result
-			if saveResult.Err == nil {
-				defer func() {
-					_ = os.Remove(archivePath)
-				}()
-				trivyResult = runTrivy(ctx, trivyEnv, "image", "--input", archivePath, "--format", "spdx-json", "--output", sbomPath)
-			} else {
-				logger.Warn("podman image save failed",
-					"image", localImageRef,
-					"exit_code", saveResult.ExitCode,
-					"duration", saveResult.Duration,
-					"stderr", exec.LastNLines(saveResult.Stderr, 20),
-				)
-				trivyResult = runTrivy(ctx, trivyEnv, "image", "--format", "spdx-json", "--output", sbomPath, localImageRef)
-			}
-
-			if trivyResult.Err != nil {
-				logger.Warn("trivy scan failed",
-					"image", localImageRef,
-					"exit_code", trivyResult.ExitCode,
-					"duration", trivyResult.Duration,
-					"stderr", exec.LastNLines(trivyResult.Stderr, 20),
-				)
-				ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", trivyResult.Err))
-			} else {
-				logger.Info("SBOM generated", "output", sbomPath, "duration", trivyResult.Duration)
-				setCIOutput("sbom", sbomPath)
-
-				// Attest SBOM if signing is enabled
-				if ciSign && exec.CheckCommand("cosign") {
-					logger.Info("attesting SBOM")
-					attestResult := exec.Cosign(ctx, "attest", "--yes", "--predicate", sbomPath, "--type", "spdxjson", fmt.Sprintf("%s/%s@%s", registry, imageName, digest))
-					if attestResult.Err != nil {
-						ci.LogWarning(fmt.Sprintf("SBOM attestation failed: %v", attestResult.Err))
-					}
+			if _, err := os.Stat(sbomPath); err == nil {
+				logger.Info("attesting SBOM")
+				attestResult := exec.Cosign(ctx, "attest", "--yes", "--predicate", sbomPath, "--type", "spdxjson", fmt.Sprintf("%s/%s@%s", registry, imageName, digest))
+				if attestResult.Err != nil {
+					ci.LogWarning(fmt.Sprintf("SBOM attestation failed: %v", attestResult.Err))
 				}
 			}
 

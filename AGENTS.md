@@ -1,4 +1,4 @@
-# Copilot Instructions for galena bootc Image Template
+# Copilot Instructions for galena bootc Image
 
 ## CRITICAL: GitHub API Usage
 
@@ -13,88 +13,10 @@
 
 **Execute before EVERY commit:**
 
-1. **Conventional Commits** - ALL commits MUST follow conventional commit format (see below)
-2. **Shellcheck** - `shellcheck *.sh` on all modified shell files
-3. **YAML validation** - `python3 -c "import yaml; yaml.safe_load(open('file.yml'))"` on all modified YAML
-4. **Justfile syntax** - `just --list` to verify
-5. **Confirm with user** - Always confirm before committing and pushing
-
-**Never commit files with syntax errors.**
-
-### REQUIRED: Conventional Commit Format
-
-**ALL commits MUST use conventional commits format**
-
-```
-<type>[optional scope]: <description>
-```
-
-## CRITICAL: Template Initialization
-
-**When this repository is used as a template, you MUST:**
-
-### 1. Rename ALL instances of `galena`
-
-**Source of truth**: `Containerfile` line 9: `# Name: galena`
-
-**Files to update:**
-
-- `Containerfile` (line 9)
-- `Justfile` (line 1)
-- `README.md` (line 1)
-- `artifacthub-repo.yml` (line 5)
-- `custom/ujust/README.md` (~line 175)
-- `.github/workflows/ghcr-pruner.yml` (line 22)
-
-### 2. Create "What's Different" section in README
-
-**CRITICAL**: Add this section near the top of README.md (after the title/intro, before detailed docs):
-
-```markdown
-## What Makes this Raptor Different?
-
-Here are the changes from [Base Image Name]. This image is based on [Bluefin/Bazzite/Aurora/etc] and includes these customizations:
-
-### Added Packages (Build-time)
-
-- **System packages**: tmux, micro, mosh - [brief explanation of why]
-
-### Added Applications (Runtime)
-
-- **CLI Tools (Homebrew)**: neovim, helix - [brief explanation]
-- **GUI Apps (Flatpak)**: Spotify, Thunderbird - [brief explanation]
-
-### Removed/Disabled
-
-- List anything removed from base image
-
-### Configuration Changes
-
-- Any systemd services enabled/disabled
-- Desktop environment changes
-- Other notable modifications
-
-_Last updated: [date]_
-```
-
-**Maintenance requirement**:
-
-- **ALWAYS update this section when you modify packages or configuration**
-- Keep descriptions brief and user-focused (explain "why", not just "what")
-- Write for typical Linux users, not developers
-- Update the "Last updated" date with each change
-
-### 3. Verify copilot instructions are present
-
-Confirm `.github/copilot-instructions.md` exists in the new repository. This file should be automatically copied when using this as a GitHub template.
-
-### 4. Explain signing is optional
-
-Signing is DISABLED by default. First builds succeed immediately. Enable later for production (see README).
-
-**These 4 steps are REQUIRED for every new template instance.**
-
----
+1. **Shellcheck** - `shellcheck *.sh` on all modified shell files
+2. **YAML validation** - `python3 -c "import yaml; yaml.safe_load(open('file.yml'))"` on all modified YAML
+3. **Justfile syntax** - `just --list` to verify
+4. **Confirm with user** - Always confirm before committing and pushing
 
 ## Repository Structure
 
@@ -143,6 +65,16 @@ Signing is DISABLED by default. First builds succeed immediately. Enable later f
 
 ## Core Principles
 
+### Custom Go CLI (`./galena`)
+
+The project uses a custom Go-based CLI for core operations. ALWAYS prefer using the CLI over manual podman or just commands when possible.
+
+- **Build**: `./galena build` (Interactive or flags like `--push`)
+- **Disk Images**: `./galena disk <type>` (iso, qcow2, raw, etc.)
+- **Validation**: `./galena validate` (Runs all checks: shellcheck, brew, flatpak, just, etc.)
+- **VM Testing**: `./galena vm run`
+- **SBOM**: `./galena sbom <image>`
+
 ### Multi-Stage Build Architecture
 
 This template follows the **Bluefin architecture pattern** from @projectbluefin/distroless:
@@ -189,7 +121,6 @@ This template follows the **Bluefin architecture pattern** from @projectbluefin/
 ### Branch Strategy
 
 - **main** = Production releases ONLY. Never push directly. Builds `:stable` images.
-- **Conventional Commits** = REQUIRED. `feat:`, `fix:`, `chore:`, etc.
 - **Workflows** = All validation happens on PRs. Merging to main triggers stable builds.
 
 ### Validation Workflows
@@ -679,51 +610,18 @@ cp /ctx/oci/brew/*.sh /usr/local/bin/
 
 **Reference:** See [Bluefin Contributing Guide](https://docs.projectbluefin.io/contributing/) for architecture diagram
 
-### 9. Image Signing (Optional, Recommended for Production)
-
-**Default**: DISABLED (commented out in workflows) to allow first builds.
-
-```bash
-# Generate keys
-COSIGN_PASSWORD="" cosign generate-key-pair
-# Creates: cosign.key (SECRET), cosign.pub (COMMIT)
-
-# Add to GitHub
-# Settings → Secrets and Variables → Actions → New secret
-# Name: SIGNING_SECRET
-# Value: <paste entire contents of cosign.key>
-
-# Uncomment signing sections in:
-# - .github/workflows/build.yml
-# - .github/workflows/build-testing.yml
-```
-
-**NEVER commit `cosign.key`**. Already in `.gitignore`.
-
----
-
-## Critical Rules (Enforced)
-
-1. **ALWAYS** use Conventional Commits format for ALL commits (required for Release Please)
-   - Format: `<type>[scope]: <description>`
-   - Valid types: `feat:`, `fix:`, `docs:`, `chore:`, `build:`, `ci:`, `refactor:`, `test:`
-   - Breaking changes: Add `!` or `BREAKING CHANGE:` in footer
-   - See `.github/commit-convention.md` for examples
-2. **NEVER** commit `cosign.key` to repository
-3. **ALWAYS** disable COPRs after use (`copr_install_isolated` function)
-4. **ALWAYS** use `dnf5` exclusively (never `dnf`, `yum`, `rpm-ostree`)
-5. **ALWAYS** use `-y` flag for non-interactive installs
-6. **NEVER** use `dnf5` in ujust files - only Brewfile/Flatpak shortcuts
-7. **ALWAYS** work on testing branch for development
-8. **ALWAYS** let Release Please handle testing→main merges
-9. **NEVER** push directly to main (only via Release Please)
-10. **ALWAYS** confirm with user before deviating from @ublue-os/bluefin patterns
-11. **ALWAYS** run shellcheck/YAML validation before committing
-12. **ALWAYS** update bootc switch URL in `iso/iso.toml` to match user's repo
-13. **ALWAYS** follow numbered script convention: `10-*.sh`, `20-*.sh`, `30-*.sh`
-14. **ALWAYS** check example scripts before creating new patterns (`.example` files in `build/`)
-15. **ALWAYS** validate that new Flatpak IDs exist on Flathub before adding
-16. **NEVER** modify validation workflows without understanding impact on PR checks
+### 8. Release Workflow
+3. **ALWAYS** use `dnf5` exclusively (never `dnf`, `yum`, `rpm-ostree`)
+4. **ALWAYS** use `-y` flag for non-interactive installs
+5. **NEVER** use `dnf5` in ujust files - only Brewfile/Flatpak shortcuts
+6. **ALWAYS** work on testing branch for development
+7. **ALWAYS** confirm with user before deviating from @ublue-os/bluefin patterns
+8. **ALWAYS** run shellcheck/YAML validation before committing
+9. **ALWAYS** update bootc switch URL in `iso/iso.toml` to match user's repo
+10. **ALWAYS** follow numbered script convention: `10-*.sh`, `20-*.sh`, `30-*.sh`
+11. **ALWAYS** check example scripts before creating new patterns (`.example` files in `build/`)
+12. **ALWAYS** validate that new Flatpak IDs exist on Flathub before adding
+13. **NEVER** modify validation workflows without understanding impact on PR checks
 
 ---
 
@@ -731,7 +629,6 @@ COSIGN_PASSWORD="" cosign generate-key-pair
 
 | Symptom                             | Cause                   | Solution                                                                   |
 | ----------------------------------- | ----------------------- | -------------------------------------------------------------------------- |
-| Build fails: "permission denied"    | Signing misconfigured   | Verify signing commented out OR `SIGNING_SECRET` set                       |
 | Build fails: "package not found"    | Typo or unavailable     | Check spelling, verify on RPMfusion, add COPR if needed                    |
 | Build fails: "base image not found" | Invalid FROM line       | Check syntax in `Containerfile` line 24                                    |
 | Build fails: "shellcheck error"     | Script syntax error     | Run `shellcheck build/*.sh` locally, fix errors                            |
@@ -1172,27 +1069,6 @@ brew install package-name
 
 ---
 
-## Other Rules that are Important to the Maintainers
-
-- Ensure that [conventional commits](https://www.conventionalcommits.org/en/v1.0.0/#specification) are used and enforced for every commit and pull request title.
-- Always be surgical with the least amount of code, the project strives to be easy to maintain.
-
-## Attribution Requirements
-
-AI agents must disclose what tool and model they are using in the "Assisted-by" commit footer:
-
-```text
-Assisted-by: [Model Name] via [Tool Name]
-```
-
-Example:
-
-```text
-Assisted-by: Claude 3.5 Sonnet via GitHub Copilot
-```
-
----
-
-**Last Updated**: 2025-11-14  
-**Template Version**: galena (Enhanced with comprehensive Copilot instructions)  
-**Maintainer**: Universal Blue Community
+**Last Updated**: 2026-02-04  
+**Project**: Galena  
+**Maintainer**: Roan

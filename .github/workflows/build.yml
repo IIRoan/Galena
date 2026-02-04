@@ -15,9 +15,9 @@ on:
 
 env:
   IMAGE_DESC: "Galena Linux"
-  IMAGE_KEYWORDS: "bootc,ublue,universal-blue"
-  IMAGE_LOGO_URL: "https://avatars.githubusercontent.com/u/120078124?s=200&v=4"  # Put your own image here for a fancy profile on https://artifacthub.io/!
-  IMAGE_NAME: "${{ github.event.repository.name }}"  # output image name, usually same as repo name
+  IMAGE_KEYWORDS: "bootc,ublue,universal-blue,galena"
+  IMAGE_LOGO_URL: "https://raw.githubusercontent.com/iiroan/galena/main/custom/system_files/usr/share/pixmaps/galena-logo.png"
+  IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
   DEFAULT_TAG: "stable"
   GO_VERSION: "1.23"
@@ -141,6 +141,11 @@ jobs:
         uses: sigstore/cosign-installer@v3
         if: steps.flags.outputs.should_sign == 'true'
 
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
+        with:
+          cache: true
+
       - name: Build and push image
         id: build
         env:
@@ -165,47 +170,16 @@ jobs:
           ${{ github.workspace }}/galena ci build \
             --default-tag "${{ env.DEFAULT_TAG }}" \
             $PUSH_FLAG \
-            $SIGN_FLAG
-
-      - name: Resolve SBOM image tag
-        id: sbom-tag
-        if: always()
-        run: |
-          tag="${{ env.DEFAULT_TAG }}"
-          if [[ -f build-manifest.json ]]; then
-            tag="$(jq -r '.images[0].tag' build-manifest.json)"
-          fi
-          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
-          echo "local_ref=${IMAGE_NAME}:${tag}" >> "${GITHUB_OUTPUT}"
-
-      - name: Save image for SBOM
-        if: steps.build.outcome == 'success'
-        run: |
-          podman image save -o "${RUNNER_TEMP}/sbom-image.tar" "${{ steps.sbom-tag.outputs.local_ref }}"
-
-      - name: Generate SBOM (Trivy)
-        id: generate-sbom
-        if: steps.build.outcome == 'success'
-        uses: aquasecurity/trivy-action@0.33.1
-        with:
-          input: ${{ runner.temp }}/sbom-image.tar
-          format: spdx-json
-          output: ${{ runner.temp }}/sbom.spdx.json
+            $SIGN_FLAG \
+            --sbom
 
       - name: Upload SBOM artifact
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sbom-spdx-json
-          path: ${{ runner.temp }}/sbom.spdx.json
+          path: sbom.spdx.json
           if-no-files-found: error
-
-      - name: Attest SBOM
-        if: steps.flags.outputs.should_sign == 'true' && steps.build.outcome == 'success'
-        env:
-          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
-        run: |
-          cosign attest --yes --predicate "${{ runner.temp }}/sbom.spdx.json" --type spdxjson "${{ steps.build.outputs.image }}@${{ steps.build.outputs.digest }}"
 
       - name: Upload build manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

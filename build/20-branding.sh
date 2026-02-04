@@ -6,6 +6,12 @@ echo "::group:: Install Custom Branding"
 # Replace Bluefin branding with Galena in OS identification
 if [ -f /etc/os-release ]; then
     sed -i 's/Bluefin/Galena/g' /etc/os-release
+    sed -i 's/bluefin/galena/g' /etc/os-release
+    sed -i 's/^ID=fedora/ID=galena/' /etc/os-release
+    sed -i 's/^VARIANT_ID=bluefin/VARIANT_ID=galena/' /etc/os-release
+    # Update PRETTY_NAME and NAME specifically if they contain Bluefin
+    sed -i 's/NAME="Bluefin"/NAME="Galena"/' /etc/os-release
+    sed -i 's/PRETTY_NAME="Bluefin/PRETTY_NAME="Galena/' /etc/os-release
     # Ensure LOGO is set correctly, replacing any existing LOGO entry
     if grep -q "^LOGO=" /etc/os-release; then
         sed -i 's/^LOGO=.*/LOGO=galena-logo/' /etc/os-release
@@ -15,6 +21,11 @@ if [ -f /etc/os-release ]; then
 fi
 if [ -f /usr/lib/os-release ]; then
     sed -i 's/Bluefin/Galena/g' /usr/lib/os-release
+    sed -i 's/bluefin/galena/g' /usr/lib/os-release
+    sed -i 's/^ID=fedora/ID=galena/' /usr/lib/os-release
+    sed -i 's/^VARIANT_ID=bluefin/VARIANT_ID=galena/' /usr/lib/os-release
+    sed -i 's/NAME="Bluefin"/NAME="Galena"/' /usr/lib/os-release
+    sed -i 's/PRETTY_NAME="Bluefin/PRETTY_NAME="Galena/' /usr/lib/os-release
     if grep -q "^LOGO=" /usr/lib/os-release; then
         sed -i 's/^LOGO=.*/LOGO=galena-logo/' /usr/lib/os-release
     else

@@ -3,7 +3,7 @@ description: OCI-native OS appliance built on Universal Blue
 registry: ghcr.io
 repository: ""
 build:
-  base_image: ghcr.io/ublue-os/silverblue-main
+  base_image: ghcr.io/ublue-os/bluefin-dx:stable
   fedora_version: "42"
   build_args: {}
   cache_mounts:
