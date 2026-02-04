@@ -246,6 +246,14 @@ func rebuildStyles() {
 		MarginBottom(0)
 }
 
+func AccentStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(Accent).Bold(true)
+}
+
+func PrimaryStyle() lipgloss.Style {
+	return lipgloss.NewStyle().Foreground(Primary).Bold(true)
+}
+
 func Banner() string {
 	text := strings.TrimRight(bannerText, "\n")
 	width := contentWidth()
