@@ -167,7 +167,7 @@ galena build                # Build container image (interactive or flags)
 galena disk <type>          # Build bootable disk images
 galena vm run               # Run VM for testing
 galena sign <image>         # Sign images with cosign
-galena sbom <image>         # Generate SBOM with Syft
+galena sbom <image>         # Generate SBOM with Trivy
 galena validate             # Run validation checks
 galena status               # Show project and system status
 galena clean                # Clean build artifacts
@@ -370,7 +370,7 @@ GitHub Actions automatically:
 - Creates `:stable` and datestamped tags
 - Validates PRs before merge
 - Signs images with cosign (optional)
-- Generates SBOMs with Syft
+- Generates SBOMs with Trivy
 - Cleans old images (>90 days)
 - Updates dependencies via Renovate
 

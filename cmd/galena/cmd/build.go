@@ -68,7 +68,7 @@ func init() {
 	buildCmd.Flags().BoolVar(&buildNoCache, "no-cache", false, "Build without cache")
 	buildCmd.Flags().BoolVar(&buildPush, "push", false, "Push image to registry after build")
 	buildCmd.Flags().BoolVar(&buildSign, "sign", false, "Sign image with cosign after push")
-	buildCmd.Flags().BoolVar(&buildSBOM, "sbom", false, "Generate SBOM with syft")
+	buildCmd.Flags().BoolVar(&buildSBOM, "sbom", false, "Generate SBOM with trivy")
 	buildCmd.Flags().BoolVar(&buildRechunk, "rechunk", false, "Rechunk image for optimization")
 	buildCmd.Flags().BoolVar(&buildDryRun, "dry-run", false, "Show what would be done without executing")
 	buildCmd.Flags().BoolVar(&buildUseJust, "just", false, "Use existing Justfile recipes")

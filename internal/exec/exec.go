@@ -205,6 +205,11 @@ func Syft(ctx context.Context, args ...string) *Result {
 	return RunSimple(ctx, "syft", args...)
 }
 
+// Trivy runs a trivy command
+func Trivy(ctx context.Context, args ...string) *Result {
+	return RunSimple(ctx, "trivy", args...)
+}
+
 // BootcImageBuilder runs bootc-image-builder in a container
 func BootcImageBuilder(ctx context.Context, image string, outputType string, configFile string, outputDir string) *Result {
 	args := []string{

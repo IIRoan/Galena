@@ -255,7 +255,7 @@ func (b *Builder) sign(ctx context.Context, imageRef string) error {
 
 // generateSBOM generates an SBOM for the image
 func (b *Builder) generateSBOM(ctx context.Context, imageRef string) (string, error) {
-	if err := exec.RequireCommands("syft"); err != nil {
+	if err := exec.RequireCommands("trivy"); err != nil {
 		return "", err
 	}
 
@@ -263,12 +263,13 @@ func (b *Builder) generateSBOM(ctx context.Context, imageRef string) (string, er
 
 	outputPath := filepath.Join(b.rootDir, "sbom.spdx.json")
 
-	result := exec.Syft(ctx,
-		"scan", imageRef,
-		"-o", "spdx-json="+outputPath,
+	result := exec.Trivy(ctx,
+		"image", imageRef,
+		"--format", "spdx-json",
+		"--output", outputPath,
 	)
 	if result.Err != nil {
-		b.logger.Error("syft scan failed", "stderr", result.Stderr)
+		b.logger.Error("trivy scan failed", "stderr", result.Stderr)
 		return "", result.Err
 	}
 

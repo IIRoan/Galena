@@ -67,7 +67,7 @@ func runStatus(cmd *cobra.Command, args []string) error {
 
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Tools"))
-	tools := []string{"podman", "just", "qemu-system-x86_64", "cosign", "syft", "bootc"}
+	tools := []string{"podman", "just", "qemu-system-x86_64", "cosign", "trivy", "bootc"}
 	for _, tool := range tools {
 		if exec.CheckCommand(tool) {
 			fmt.Printf("  %s %s\n", ui.StatusSuccess.String(), tool)

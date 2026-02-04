@@ -16,3 +16,4 @@ sbom-image.oci.tar
 
 # Go module cache (if using vendor)
 vendor/
+sbom-image.tar

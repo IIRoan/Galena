@@ -4,10 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 
@@ -26,12 +24,12 @@ var (
 var sbomCmd = &cobra.Command{
 	Use:   "sbom [image]",
 	Short: "Generate SBOM for a container image",
-	Long: `Generate a Software Bill of Materials (SBOM) for a container image using Syft.
+	Long: `Generate a Software Bill of Materials (SBOM) for a container image using Trivy.
 
 Supported formats:
   spdx-json    - SPDX JSON format (default)
   cyclonedx    - CycloneDX JSON format
-  json         - Syft JSON format
+  json         - Trivy JSON format
 
 Defaults:
   - If no image is provided, defaults to galena:main
@@ -90,21 +88,12 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 		imageRef = resolvedRef
 	}
 
-	var stopPodmanService func()
-	if exec.CheckCommand("syft") && localImage {
-		stopPodmanService = ensurePodmanService(ctx)
-	}
-	if stopPodmanService != nil {
-		defer stopPodmanService()
-	}
-
-	scope := resolveSBOMScope()
-	if exec.CheckCommand("syft") {
-		if err := generateSBOMWithSyft(ctx, imageRef, outputFile, localImage, rootDir, scope); err != nil {
+	if exec.CheckCommand("trivy") {
+		if err := generateSBOMWithTrivy(ctx, imageRef, outputFile, localImage, rootDir); err != nil {
 			return err
 		}
 	} else {
-		if err := generateSBOMWithContainer(ctx, imageRef, outputFile, localImage, rootDir, scope); err != nil {
+		if err := generateSBOMWithTrivyContainer(ctx, imageRef, outputFile, localImage, rootDir); err != nil {
 			return err
 		}
 	}
@@ -150,46 +139,34 @@ func ensureLocalImage(ctx context.Context, imageRef string) (string, bool) {
 	return "", false
 }
 
-func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string, scope string) error {
-	syftEnv := ensureSyftEnv(rootDir)
+func generateSBOMWithTrivy(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
+	trivyEnv := ensureTrivyEnv(rootDir)
 	logger.Info("generating SBOM",
 		"image", imageRef,
 		"format", sbomFormat,
 		"output", outputFile,
-		"scope", scope,
 	)
 
-	if localImage && exec.CheckCommand("podman") && os.Getenv("CONTAINER_HOST") != "" {
-		podmanImageRef := "podman:" + imageRef
-		logger.Info("syft scan via podman engine", "image", podmanImageRef)
-		result := runSyft(ctx, syftEnv, "scan", podmanImageRef, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
-		if result.Err == nil {
-			logger.Info("SBOM generated", "output", outputFile)
-			return nil
-		}
-		logger.Warn("SBOM generation via podman engine failed", "stderr", exec.LastNLines(result.Stderr, 20))
-	}
-
 	if localImage && exec.CheckCommand("podman") {
-		ociArchivePath := filepath.Join(rootDir, "sbom-image.oci.tar")
-		save := exec.Podman(ctx, "image", "save", "--format", "oci-archive", "-o", ociArchivePath, imageRef)
+		archivePath := filepath.Join(rootDir, "sbom-image.tar")
+		save := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, imageRef)
 		if save.Err == nil {
 			defer func() {
-				_ = os.Remove(ociArchivePath)
+				_ = os.Remove(archivePath)
 			}()
-			logger.Info("syft scan via oci-archive", "path", ociArchivePath)
-			result := runSyft(ctx, syftEnv, "scan", "oci-archive:"+ociArchivePath, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
+			logger.Info("trivy scan via tarball", "path", archivePath)
+			result := runTrivy(ctx, trivyEnv, "image", "--input", archivePath, "--format", sbomFormat, "--output", outputFile)
 			if result.Err == nil {
 				logger.Info("SBOM generated", "output", outputFile)
 				return nil
 			}
-			logger.Warn("SBOM generation via oci-archive failed", "stderr", exec.LastNLines(result.Stderr, 20))
+			logger.Warn("SBOM generation via tarball failed", "stderr", exec.LastNLines(result.Stderr, 20))
 		} else {
 			logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
 		}
 	}
 
-	result := runSyft(ctx, syftEnv, "scan", imageRef, "--scope", scope, "-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile))
+	result := runTrivy(ctx, trivyEnv, "image", "--format", sbomFormat, "--output", outputFile, imageRef)
 	if result.Err != nil {
 		logger.Error("SBOM generation failed", "stderr", exec.LastNLines(result.Stderr, 20))
 		return fmt.Errorf("SBOM generation failed: %w", result.Err)
@@ -199,40 +176,43 @@ func generateSBOMWithSyft(ctx context.Context, imageRef, outputFile string, loca
 	return nil
 }
 
-func generateSBOMWithContainer(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string, scope string) error {
+func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
 	if !exec.CheckCommand("podman") {
-		msg := "syft not found and podman unavailable; cannot generate SBOM"
+		msg := "trivy not found and podman unavailable; cannot generate SBOM"
 		logger.Error(msg)
 		return fmt.Errorf(msg)
 	}
 
-	logger.Info("syft not found; using container fallback")
-	target := imageRef
-	ociArchivePath := ""
+	logger.Info("trivy not found; using container fallback")
+	targetArgs := []string{"image"}
+	archivePath := ""
 	if localImage {
-		ociArchivePath = filepath.Join(rootDir, "sbom-image.oci.tar")
-		save := exec.Podman(ctx, "image", "save", "--format", "oci-archive", "-o", ociArchivePath, imageRef)
+		archivePath = filepath.Join(rootDir, "sbom-image.tar")
+		save := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, imageRef)
 		if save.Err != nil {
 			logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
 		} else {
-			target = "oci-archive:" + ociArchivePath
+			targetArgs = append(targetArgs, "--input", archivePath)
 		}
 	}
-	if ociArchivePath != "" {
+	if archivePath != "" {
 		defer func() {
-			_ = os.Remove(ociArchivePath)
+			_ = os.Remove(archivePath)
 		}()
+	}
+	if len(targetArgs) == 1 {
+		targetArgs = append(targetArgs, imageRef)
 	}
 
 	args := []string{
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
 		"-w", rootDir,
-		"ghcr.io/anchore/syft:latest",
-		"scan", target,
-		"--scope", scope,
-		"-o", fmt.Sprintf("%s=%s", sbomFormat, outputFile),
+		"ghcr.io/aquasecurity/trivy:latest",
 	}
+	args = append(args, targetArgs...)
+	args = append(args, "--format", sbomFormat, "--output", outputFile)
+
 	result := exec.Podman(ctx, args...)
 	if result.Err != nil {
 		logger.Error("SBOM generation failed", "stderr", exec.LastNLines(result.Stderr, 20))
@@ -330,32 +310,6 @@ func uniqueStrings(values []string) []string {
 		unique = append(unique, value)
 	}
 	return unique
-}
-
-func ensurePodmanService(ctx context.Context) func() {
-	if os.Getenv("CONTAINER_HOST") != "" || !exec.CheckCommand("podman") {
-		return nil
-	}
-
-	socket := filepath.Join(os.TempDir(), fmt.Sprintf("podman-syft-%d.sock", time.Now().UnixNano()))
-	cmd := osexec.CommandContext(ctx, "podman", "system", "service", "--time=0", "unix://"+socket)
-	cmd.Stdout = os.Stderr
-	cmd.Stderr = os.Stderr
-	if err := cmd.Start(); err != nil {
-		logger.Warn("failed to start podman service", "error", err)
-		return nil
-	}
-
-	_ = os.Setenv("CONTAINER_HOST", "unix://"+socket)
-	logger.Info("podman service started for syft", "socket", socket)
-
-	return func() {
-		if cmd.Process != nil {
-			_ = cmd.Process.Kill()
-		}
-		_ = os.Remove(socket)
-		_ = os.Unsetenv("CONTAINER_HOST")
-	}
 }
 
 func attestSBOM(ctx context.Context, imageRef, sbomFile string) error {
