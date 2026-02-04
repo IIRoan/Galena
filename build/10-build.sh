@@ -32,6 +32,21 @@ echo "::group:: Copy Custom Files"
 mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
+echo "::group:: Install Galena CLI"
+
+# Install Go compiler temporarily to build the CLI
+dnf5 install -y golang
+
+# Build and install galena CLI
+cd /ctx
+make build
+install -m 0755 galena /usr/bin/galena
+
+# Cleanup Go compiler to keep image small
+dnf5 remove -y golang
+
+echo "::endgroup::"
+
 # Consolidate Just Files
 find /ctx/custom/ujust -iname '*.just' -exec printf "\n\n" \; -exec cat {} \; >> /usr/share/ublue-os/just/60-custom.just
 
