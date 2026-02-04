@@ -103,63 +103,21 @@ jobs:
           echo "repo_digest=${repo_digest}" >> "${GITHUB_OUTPUT}"
           echo "digest=${digest}" >> "${GITHUB_OUTPUT}"
 
-      - name: Setup Syft
-        id: setup-syft
-        uses: anchore/sbom-action/download-syft@v0
-        with:
-          syft-version: v1.20.0
-
-      - name: Generate SBOM
+      - name: Generate SBOM (Trivy)
         id: generate-sbom
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: image
+          image-ref: ${{ steps.manifest.outputs.image_ref }}
+          format: spdx-json
+          output: ${{ runner.temp }}/sbom.spdx.json
         env:
-          IMAGE: ${{ steps.manifest.outputs.image_ref }}
-          SBOM_SCOPE: squashed
-          SYFT_CMD: ${{ steps.setup-syft.outputs.cmd }}
-          SYFT_PARALLELISM: "1"
-          SYFT_LOG_LEVEL: info
-          SYFT_FILE_METADATA_SELECTION: none
-          SYFT_REGISTRY_AUTH_AUTHORITY: ghcr.io
-          SYFT_REGISTRY_AUTH_USERNAME: ${{ github.actor }}
-          SYFT_REGISTRY_AUTH_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-          SYFT_CACHE_DIR: ${{ github.workspace }}/.cache/syft
-          STEREOSCOPE_CACHE: ${{ github.workspace }}/.cache/syft/stereoscope
-          XDG_CACHE_HOME: ${{ github.workspace }}/.cache
-          TMPDIR: ${{ github.workspace }}/.cache/tmp
-        run: |
-          set -euo pipefail
-          mkdir -p "${SYFT_CACHE_DIR}" "${STEREOSCOPE_CACHE}" "${TMPDIR}"
-          OUTPUT_PATH="${RUNNER_TEMP}/sbom.spdx.json"
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
 
-          heartbeat() {
-            while true; do
-              echo "SBOM generation in progress ($(date -u +%H:%M:%S) UTC)..."
-              sleep 60
-            done
-          }
-
-          heartbeat & HB_PID=$!
-          trap 'kill "${HB_PID}" >/dev/null 2>&1 || true' EXIT
-
-          remove_catalogers=(file)
-          if "${SYFT_CMD}" cataloger list | grep -q "wordpress-plugins-cataloger"; then
-            remove_catalogers+=(wordpress-plugins-cataloger)
-          fi
-
-          select_args=()
-          if ((${#remove_catalogers[@]})); then
-            select_expr="$(printf ",-%s" "${remove_catalogers[@]}")"
-            select_expr="${select_expr#,}"
-            echo "Removing catalogers: ${select_expr}"
-            select_args=(--select-catalogers "${select_expr}")
-          fi
-
-          "${SYFT_CMD}" scan \
-            --from docker \
-            --scope "${SBOM_SCOPE}" \
-            "${select_args[@]}" \
-            "${IMAGE}" \
-            -o "spdx-json=${OUTPUT_PATH}"
-          echo "SBOM_PATH=${OUTPUT_PATH}" >> "${GITHUB_OUTPUT}"
+      - name: Set SBOM output
+        id: sbom-path
+        run: echo "SBOM_PATH=${{ runner.temp }}/sbom.spdx.json" >> "${GITHUB_OUTPUT}"
 
       - name: Upload SBOM artifact
         if: always()
@@ -187,7 +145,7 @@ jobs:
         env:
           COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
         run: |
-          cosign attest --yes --predicate "${{ steps.generate-sbom.outputs.SBOM_PATH }}" --type spdxjson "${{ steps.digest.outputs.repo_digest }}"
+          cosign attest --yes --predicate "${{ steps.sbom-path.outputs.SBOM_PATH }}" --type spdxjson "${{ steps.digest.outputs.repo_digest }}"
 
       - name: Write SBOM summary
         if: always()
@@ -196,7 +154,7 @@ jobs:
           IMAGE: ${{ steps.manifest.outputs.image_ref }}
           DIGEST: ${{ steps.digest.outputs.digest }}
           TAG: ${{ steps.manifest.outputs.tag }}
-          SBOM_PATH: ${{ steps.generate-sbom.outputs.SBOM_PATH }}
+          SBOM_PATH: ${{ steps.sbom-path.outputs.SBOM_PATH }}
           RESULT: ${{ steps.generate-sbom.outcome }}
         run: |
           {
