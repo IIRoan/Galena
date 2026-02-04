@@ -234,23 +234,6 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		logger.Info("skipping push for pull request")
 	}
 
-	if shouldPush {
-		ci.StartGroup("Pushing Image")
-
-		for _, tag := range tags {
-			imageRef := fmt.Sprintf("%s/%s:%s", registry, imageName, tag)
-			logger.Info("pushing", "image", imageRef)
-
-			pushResult := exec.PodmanPush(ctx, imageRef)
-			if pushResult.Err != nil {
-				ci.LogError(fmt.Sprintf("Push failed for %s: %v", imageRef, pushResult.Err), "", 0)
-				return fmt.Errorf("push failed: %w", pushResult.Err)
-			}
-		}
-
-		ci.EndGroup()
-	}
-
 	// Generate SBOM if requested (always run if flag is set, even if not pushing)
 	if ciSBOM {
 		ci.StartGroup("Generating SBOM")
@@ -272,18 +255,58 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 			ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", err))
 		} else {
 			setCIOutput("sbom", sbomPath)
+		}
 
-			// Attest SBOM if signing is enabled and image was pushed
-			if shouldPush && ciSign && exec.CheckCommand("cosign") {
+		ci.EndGroup()
+	}
+
+	if shouldPush {
+		ci.StartGroup("Pushing Image")
+
+		for _, tag := range tags {
+			imageRef := fmt.Sprintf("%s/%s:%s", registry, imageName, tag)
+			logger.Info("pushing", "image", imageRef)
+
+			pushResult := exec.PodmanPush(ctx, imageRef)
+			if pushResult.Err != nil {
+				ci.LogError(fmt.Sprintf("Push failed for %s: %v", imageRef, pushResult.Err), "", 0)
+				return fmt.Errorf("push failed: %w", pushResult.Err)
+			}
+		}
+
+		ci.EndGroup()
+
+		// Get digest after push
+		digestResult := exec.Podman(ctx, "inspect", "--format", "{{.Digest}}", fullImageRef)
+		digest = strings.TrimSpace(digestResult.Stdout)
+		setCIOutput("digest", digest)
+
+		// Sign and attest if requested
+		if ciSign && exec.CheckCommand("cosign") {
+			ci.StartGroup("Signing and Attesting")
+
+			for _, tag := range tags {
+				imageRef := fmt.Sprintf("%s/%s:%s", registry, imageName, tag)
+				logger.Info("signing", "image", imageRef)
+
+				signResult := exec.Cosign(ctx, "sign", "--yes", imageRef)
+				if signResult.Err != nil {
+					ci.LogWarning(fmt.Sprintf("Signing failed for %s: %v", signResult.Err))
+				}
+			}
+
+			// Attest SBOM if generated
+			sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
+			if _, err := os.Stat(sbomPath); err == nil {
 				logger.Info("attesting SBOM")
 				attestResult := exec.Cosign(ctx, "attest", "--yes", "--predicate", sbomPath, "--type", "spdxjson", fmt.Sprintf("%s/%s@%s", registry, imageName, digest))
 				if attestResult.Err != nil {
 					ci.LogWarning(fmt.Sprintf("SBOM attestation failed: %v", attestResult.Err))
 				}
 			}
-		}
 
-		ci.EndGroup()
+			ci.EndGroup()
+		}
 	}
 
 	// Create build manifest
