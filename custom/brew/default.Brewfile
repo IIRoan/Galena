@@ -1,22 +1,49 @@
 # Default Brewfile for galena
 # Add your favorite brew packages here
-# 
-# Examples:
 
-# Modern CLI tools
-brew "bat"        # cat with syntax highlighting
-brew "eza"        # Modern replacement for ls
-brew "fd"         # Simple, fast alternative to find
-brew "rg"         # ripgrep - faster grep
+# Current system packages
+brew "act"
+brew "atuin"
+brew "automake"
+brew "bash-preexec"
+brew "bat"
+brew "boost"
+brew "btop"
+brew "chezmoi"
+brew "cups"
+brew "devcontainer"
+brew "direnv"
+brew "dysk"
+brew "eza"
+brew "fd"
+brew "fwupd"
+brew "gh"
+brew "glab"
+brew "go"
+brew "helix"
+brew "k6"
+brew "micro"
+brew "neovim"
+brew "bun"
+brew "pkgconf"
+brew "pnpm"
+brew "shellcheck"
+brew "starship"
+brew "stress-ng"
+brew "syft"
+brew "tcptraceroute"
+brew "tealdeer"
+brew "television"
+brew "trash-cli"
+brew "trivy"
+brew "ugrep"
+brew "uutils-coreutils"
+brew "bbrew"
+brew "yq"
+brew "zoxide"
 
-# Development tools
-brew "gh"         # GitHub CLI
-brew "git"        # Git version control
-
-# Shell enhancements  
-brew "starship"   # Cross-shell prompt
-brew "zoxide"     # Smarter cd command
-
-# Utilities
-brew "htop"       # Interactive process viewer
-brew "tmux"       # Terminal multiplexer
+# Original defaults
+brew "rg"
+brew "git"
+brew "htop"
+brew "tmux"
