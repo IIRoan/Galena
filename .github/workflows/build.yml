@@ -141,6 +141,11 @@ jobs:
         uses: sigstore/cosign-installer@v3
         if: steps.flags.outputs.should_sign == 'true'
 
+      - name: Install Trivy
+        uses: aquasecurity/setup-trivy@v0.2.2
+        with:
+          cache: true
+
       - name: Build and push image
         id: build
         env:
