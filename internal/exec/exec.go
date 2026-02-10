@@ -239,6 +239,91 @@ func BootcImageBuilder(ctx context.Context, image string, outputType string, con
 	return Run(ctx, "podman", args, opts)
 }
 
+// RunPipe executes two commands piped together: cmd1 | cmd2
+func RunPipe(ctx context.Context, name1 string, args1 []string, name2 string, args2 []string, opts Options) *Result {
+	start := time.Now()
+	result := &Result{
+		Command: fmt.Sprintf("%s | %s", name1, name2),
+	}
+
+	if opts.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		defer cancel()
+	}
+
+	cmd1 := exec.CommandContext(ctx, name1, args1...)
+	cmd2 := exec.CommandContext(ctx, name2, args2...)
+
+	if opts.Dir != "" {
+		cmd1.Dir = opts.Dir
+		cmd2.Dir = opts.Dir
+	}
+
+	if len(opts.Env) > 0 {
+		env := append(os.Environ(), opts.Env...)
+		cmd1.Env = env
+		cmd2.Env = env
+	}
+
+	// Create pipe
+	pr, pw := io.Pipe()
+	cmd1.Stdout = pw
+	cmd2.Stdin = pr
+
+	var stdout, stderr bytes.Buffer
+	var stdoutW, stderrW io.Writer
+	if opts.StreamStdio {
+		stdoutW = io.MultiWriter(os.Stdout, &stdout)
+		stderrW = io.MultiWriter(os.Stderr, &stderr)
+	} else {
+		stdoutW = &stdout
+		stderrW = &stderr
+	}
+
+	cmd1.Stderr = stderrW
+	cmd2.Stdout = stdoutW
+	cmd2.Stderr = stderrW
+
+	if opts.Logger != nil {
+		opts.Logger.Debug("executing piped commands",
+			"cmd1", name1, "args1", args1,
+			"cmd2", name2, "args2", args2,
+		)
+	}
+
+	if err := cmd1.Start(); err != nil {
+		result.Err = fmt.Errorf("cmd1 start: %w", err)
+		return result
+	}
+	if err := cmd2.Start(); err != nil {
+		result.Err = fmt.Errorf("cmd2 start: %w", err)
+		return result
+	}
+
+	// Wait for cmd1 in a goroutine
+	go func() {
+		_ = cmd1.Wait()
+		pw.Close()
+	}()
+
+	err := cmd2.Wait()
+	result.Duration = time.Since(start)
+	result.Stdout = stdout.String()
+	result.Stderr = stderr.String()
+
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			result.ExitCode = exitErr.ExitCode()
+		} else {
+			result.ExitCode = -1
+		}
+		result.Err = err
+	}
+
+	return result
+}
+
 // CheckCommand checks if a command is available
 func CheckCommand(name string) bool {
 	_, err := exec.LookPath(name)
