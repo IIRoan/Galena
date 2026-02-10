@@ -252,7 +252,8 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 		}
 
 		if err != nil {
-			ci.LogWarning(fmt.Sprintf("SBOM generation failed: %v", err))
+			ci.LogError(fmt.Sprintf("SBOM generation failed: %v", err), "", 0)
+			return fmt.Errorf("SBOM generation failed: %w", err)
 		} else {
 			setCIOutput("sbom", sbomPath)
 		}
