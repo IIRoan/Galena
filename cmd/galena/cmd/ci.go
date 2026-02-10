@@ -292,7 +292,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 
 				signResult := exec.Cosign(ctx, "sign", "--yes", imageRef)
 				if signResult.Err != nil {
-					ci.LogWarning(fmt.Sprintf("Signing failed for %s: %v", signResult.Err))
+					ci.LogWarning(fmt.Sprintf("Signing failed for %s: %v", imageRef, signResult.Err))
 				}
 			}
 

@@ -154,6 +154,7 @@ jobs:
           IMAGE_LOGO_URL: ${{ env.IMAGE_LOGO_URL }}
           IMAGE_NAME: ${{ env.IMAGE_NAME }}
           IMAGE_REGISTRY: ${{ env.IMAGE_REGISTRY }}
+          GALENA_SBOM_ARCHIVE_DIR: /var/lib/containers
           GALENA_CI_TAGS: ${{ steps.flags.outputs.tags_override }}
         run: |
           PUSH_FLAG=""

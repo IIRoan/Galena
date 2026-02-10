@@ -142,6 +142,42 @@ func ensureLocalImage(ctx context.Context, imageRef string) (string, bool) {
 	return "", false
 }
 
+func createSBOMArchivePath(rootDir string) (string, func(), error) {
+	candidates := []string{}
+	if v := strings.TrimSpace(os.Getenv("GALENA_SBOM_ARCHIVE_DIR")); v != "" {
+		candidates = append(candidates, v)
+	}
+	// GitHub Actions workflow mounts podman storage here (large btrfs volume)
+	candidates = append(candidates,
+		"/var/lib/containers",
+		filepath.Join(rootDir, ".cache"),
+		os.TempDir(),
+	)
+
+	for _, dir := range candidates {
+		if strings.TrimSpace(dir) == "" {
+			continue
+		}
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			continue
+		}
+		f, err := os.CreateTemp(dir, "galena-sbom-*.tar")
+		if err != nil {
+			continue
+		}
+		path := f.Name()
+		_ = f.Close()
+		_ = os.Remove(path)
+
+		cleanup := func() {
+			_ = os.Remove(path)
+		}
+		return path, cleanup, nil
+	}
+
+	return "", nil, fmt.Errorf("no writable directory found for SBOM archive")
+}
+
 func generateSBOMWithTrivy(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
 	trivyEnv := ensureTrivyEnv(rootDir)
 	logger.Info("generating SBOM",
@@ -151,20 +187,24 @@ func generateSBOMWithTrivy(ctx context.Context, imageRef, outputFile string, loc
 	)
 
 	if localImage && exec.CheckCommand("podman") {
-		logger.Info("trivy scan via piped podman save", "image", imageRef)
-		
-		saveArgs := []string{"image", "save", "--format", "docker-archive", imageRef}
-		trivyArgs := []string{"image", "--input", "/dev/stdin", "--format", sbomFormat, "--output", outputFile}
-		
-		opts := exec.DefaultOptions()
-		opts.Env = trivyEnv
-		
-		result := exec.RunPipe(ctx, "podman", saveArgs, "trivy", trivyArgs, opts)
-		if result.Err == nil {
-			logger.Info("SBOM generated via pipe", "output", outputFile)
-			return nil
+		archivePath, cleanup, err := createSBOMArchivePath(rootDir)
+		if err == nil {
+			defer cleanup()
+			logger.Info("trivy scan via podman archive", "path", archivePath)
+			save := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, imageRef)
+			if save.Err == nil {
+				result := runTrivy(ctx, trivyEnv, "image", "--input", archivePath, "--format", sbomFormat, "--output", outputFile)
+				if result.Err == nil {
+					logger.Info("SBOM generated", "output", outputFile)
+					return nil
+				}
+				logger.Warn("SBOM generation via archive failed, falling back to direct scan", "stderr", exec.LastNLines(result.Stderr, 20))
+			} else {
+				logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+			}
+		} else {
+			logger.Warn("could not create SBOM archive path", "error", err)
 		}
-		logger.Warn("SBOM generation via pipe failed, falling back to direct scan", "stderr", exec.LastNLines(result.Stderr, 20))
 	}
 
 	result := runTrivy(ctx, trivyEnv, "image", "--format", sbomFormat, "--output", outputFile, imageRef)
@@ -185,27 +225,36 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 	}
 
 	logger.Info("trivy not found; using container fallback")
-	
-	args := []string{
-		"run", "--rm",
-		"-i", // Interactive for stdin
-		"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
-		"-w", rootDir,
-		"ghcr.io/aquasecurity/trivy:latest",
-		"image", "--input", "/dev/stdin",
-		"--format", sbomFormat, "--output", outputFile,
-	}
 
 	if localImage {
-		logger.Info("trivy container scan via piped podman save", "image", imageRef)
-		saveArgs := []string{"image", "save", "--format", "docker-archive", imageRef}
-		
-		result := exec.RunPipe(ctx, "podman", saveArgs, "podman", args, exec.DefaultOptions())
-		if result.Err == nil {
-			logger.Info("SBOM generated via container pipe", "output", outputFile)
-			return nil
+		archivePath, cleanup, err := createSBOMArchivePath(rootDir)
+		if err == nil {
+			defer cleanup()
+			logger.Info("trivy container scan via podman archive", "path", archivePath)
+			save := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, imageRef)
+			if save.Err == nil {
+				archiveDir := filepath.Dir(archivePath)
+				args := []string{
+					"run", "--rm",
+					"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
+					"-v", fmt.Sprintf("%s:%s:Z", archiveDir, archiveDir),
+					"-w", rootDir,
+					"ghcr.io/aquasecurity/trivy:latest",
+					"image", "--input", archivePath,
+					"--format", sbomFormat, "--output", outputFile,
+				}
+				result := exec.Podman(ctx, args...)
+				if result.Err == nil {
+					logger.Info("SBOM generated", "output", outputFile)
+					return nil
+				}
+				logger.Warn("SBOM generation via archive failed, falling back to direct container scan", "stderr", exec.LastNLines(result.Stderr, 20))
+			} else {
+				logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+			}
+		} else {
+			logger.Warn("could not create SBOM archive path", "error", err)
 		}
-		logger.Warn("SBOM generation via container pipe failed, falling back to direct container scan", "stderr", exec.LastNLines(result.Stderr, 20))
 	}
 
 	// Direct scan fallback if not local or pipe failed
