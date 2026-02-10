@@ -79,8 +79,11 @@ func runSBOM(cmd *cobra.Command, args []string) error {
 	// Determine output file
 	outputFile := sbomOutput
 	if outputFile == "" {
-		ext := ".json"
-		outputFile = filepath.Join(rootDir, fmt.Sprintf("sbom.%s%s", sbomFormat, ext))
+		format := sbomFormat
+		if format == "spdx-json" {
+			format = "spdx"
+		}
+		outputFile = filepath.Join(rootDir, fmt.Sprintf("sbom.%s.json", format))
 	}
 
 	resolvedRef, localImage := ensureLocalImage(ctx, imageRef)
