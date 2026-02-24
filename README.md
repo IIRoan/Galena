@@ -56,7 +56,7 @@ tmux      - terminal multiplexer
 If you're already running a bootc-compatible system (Fedora Silverblue, Bluefin, etc.):
 
 ```bash
-sudo bootc switch ghcr.io/iiroan/galena:stable
+sudo bootc switch ghcr.io/iiroan/galena:main
 sudo systemctl reboot
 ```
 
@@ -179,7 +179,7 @@ galena version              # Show version information
 ```bash
 galena build \
   --variant main \          # Image variant (main, nvidia, dx)
-  --tag stable \            # Image tag (stable, latest, beta)
+  --tag main \              # Image tag (main, stable, latest, beta)
   --push \                  # Push to registry after build
   --sign \                  # Sign with cosign
   --sbom \                  # Generate Software Bill of Materials
@@ -367,7 +367,7 @@ Validation checks:
 GitHub Actions automatically:
 
 - Builds on every push to `main`
-- Creates `:stable` and datestamped tags
+- Publishes `:main` for default-branch builds
 - Validates PRs before merge
 - Signs images with cosign (optional)
 - Generates SBOMs with Trivy
@@ -376,8 +376,7 @@ GitHub Actions automatically:
 
 **Image Tags:**
 
-- `ghcr.io/iiroan/galena:stable` - Latest stable release
-- `ghcr.io/iiroan/galena:stable.YYYYMMDD` - Datestamped release
+- `ghcr.io/iiroan/galena:main` - Latest default-branch release
 - `ghcr.io/iiroan/galena:testing` - PR builds (same-repo PRs only)
 
 ## Troubleshooting

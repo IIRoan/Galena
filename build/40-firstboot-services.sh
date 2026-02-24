@@ -137,11 +137,9 @@ if [ -f "${DONE_FILE}" ]; then
   exit 0
 fi
 
-if [ ! -f "${Standard SRC_FILE}" ]; then
-  if [ ! -f "${SRC_FILE}" ]; then
-    echo "VS Code settings source file missing: ${SRC_FILE}"
-    exit 1
-  fi
+if [ ! -f "${SRC_FILE}" ]; then
+  echo "VS Code settings source file missing: ${SRC_FILE}"
+  exit 1
 fi
 
 # Detect primary user (first UID >= 1000)

@@ -33,18 +33,7 @@ mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
 echo "::group:: Install Galena CLI"
-
-# Install Go compiler temporarily to build the CLI
-dnf5 install -y golang
-
-# Build and install galena CLI
-cd /ctx
-make build
-install -m 0755 galena /usr/bin/galena
-
-# Cleanup Go compiler to keep image small
-dnf5 remove -y golang
-
+echo "galena CLI is copied from the galena-cli-builder stage in Containerfile."
 echo "::endgroup::"
 
 # Consolidate Just Files

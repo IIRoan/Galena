@@ -90,3 +90,41 @@ update-and-reboot:
     else
         echo "Reboot later to apply updates."
     fi
+
+# Run the Galena setup wizard
+[group('Galena')]
+galena-setup:
+    #!/usr/bin/env bash
+    if ! command -v galena >/dev/null 2>&1; then
+        echo "galena CLI is not available in PATH."
+        exit 1
+    fi
+    galena setup
+
+# Show setup/service status
+[group('Galena')]
+galena-setup-status:
+    #!/usr/bin/env bash
+    echo "Galena setup markers:"
+    if [ -f /var/lib/galena/setup.done ]; then
+        echo "  - /var/lib/galena/setup.done: present"
+    else
+        echo "  - /var/lib/galena/setup.done: missing"
+    fi
+    if [ -f /var/lib/galena/vscode-settings.done ]; then
+        echo "  - /var/lib/galena/vscode-settings.done: present"
+    else
+        echo "  - /var/lib/galena/vscode-settings.done: missing"
+    fi
+    echo
+    echo "Service status:"
+    systemctl --no-pager --full status galena-vscode-settings.service || true
+
+# Reset setup markers and rerun first-boot VS Code settings service
+[group('Galena')]
+galena-setup-reset:
+    #!/usr/bin/pkexec bash
+    set -euo pipefail
+    rm -f /var/lib/galena/setup.done /var/lib/galena/vscode-settings.done
+    systemctl restart galena-vscode-settings.service || true
+    echo "Reset complete. Run 'ujust galena-setup' to launch the wizard."
