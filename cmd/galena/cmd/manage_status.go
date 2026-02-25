@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -23,9 +24,9 @@ var manageStatusCmd = &cobra.Command{
 }
 
 func runManageStatus(cmd *cobra.Command, args []string) error {
-	ctx := safeCommandContext(nil)
-	if cmd != nil {
-		ctx = safeCommandContext(cmd.Context())
+	ctx := context.TODO()
+	if cmd != nil && cmd.Context() != nil {
+		ctx = cmd.Context()
 	}
 
 	ui.StartScreen("DEVICE STATUS", "Runtime overview for this Galena installation")

@@ -2,6 +2,8 @@ package validate
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/iiroan/galena/internal/exec"
@@ -17,7 +19,27 @@ func Golangci(ctx context.Context, rootDir string) Result {
 		return result
 	}
 
-	lintResult := exec.RunInDir(ctx, rootDir, "golangci-lint", "run")
+	cacheBase := filepath.Join(rootDir, ".cache")
+	goCache := filepath.Join(cacheBase, "go-build")
+	lintCache := filepath.Join(cacheBase, "golangci-lint")
+	_ = os.MkdirAll(goCache, 0o755)
+	_ = os.MkdirAll(lintCache, 0o755)
+
+	env := []string{}
+	if os.Getenv("GOCACHE") == "" {
+		env = append(env, "GOCACHE="+goCache)
+	}
+	if os.Getenv("GOLANGCI_LINT_CACHE") == "" {
+		env = append(env, "GOLANGCI_LINT_CACHE="+lintCache)
+	}
+	if os.Getenv("CGO_ENABLED") == "" {
+		env = append(env, "CGO_ENABLED=0")
+	}
+
+	opts := exec.DefaultOptions()
+	opts.Dir = rootDir
+	opts.Env = env
+	lintResult := exec.Run(ctx, "golangci-lint", []string{"run"}, opts)
 	if lintResult.Err != nil {
 		msg := strings.TrimSpace(exec.LastNLines(lintResult.Stderr, 20))
 		if msg == "" {

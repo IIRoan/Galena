@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
 	osexec "os/exec"
@@ -32,11 +31,4 @@ func runAttachedCommand(name string, args []string) error {
 		return fmt.Errorf("running %s: %w", name, err)
 	}
 	return nil
-}
-
-func safeCommandContext(ctx context.Context) context.Context {
-	if ctx != nil {
-		return ctx
-	}
-	return context.Background()
 }

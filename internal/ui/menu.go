@@ -284,12 +284,12 @@ func (m menuModel) View() tea.View {
 		bodyHeight = 10
 	}
 
-	leftPanel := Panel.Copy().
+	leftPanel := Panel.
 		Width(leftWidth).
 		Height(bodyHeight).
 		Render(m.renderLeftPanel(leftWidth - 4))
 
-	rightPanel := Panel.Copy().
+	rightPanel := Panel.
 		Width(rightWidth).
 		Height(bodyHeight).
 		Render(m.renderRightPanel(rightWidth - 4))
