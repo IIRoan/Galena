@@ -3,11 +3,11 @@ package ui
 import (
 	"fmt"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 )
 
 const (
@@ -103,11 +103,11 @@ func (m MenuItem) Description() string { return m.Details }
 func (m MenuItem) FilterValue() string { return m.TitleText }
 
 type menuModel struct {
-	list     list.Model
-	title    string
-	subtitle string
-	choice   string
-	quitting bool
+	list      list.Model
+	title     string
+	subtitle  string
+	choice    string
+	quitting  bool
 	allowBack bool
 	help      help.Model
 	keys      menuKeyMap
@@ -117,13 +117,13 @@ func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfi
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = true
 	delegate.SetSpacing(0)
-	baseTitle := lipgloss.NewStyle().Foreground(Foreground)
+	baseTitle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Foreground)))
 	delegate.Styles.NormalTitle = baseTitle
-	delegate.Styles.SelectedTitle = baseTitle.Foreground(Primary).Bold(true)
-	delegate.Styles.DimmedTitle = baseTitle.Foreground(Muted)
-	delegate.Styles.NormalDesc = baseTitle.Foreground(Muted)
-	delegate.Styles.SelectedDesc = baseTitle.Foreground(Muted)
-	delegate.Styles.DimmedDesc = baseTitle.Foreground(Muted)
+	delegate.Styles.SelectedTitle = baseTitle.Foreground(lipgloss.Color(string(Primary))).Bold(true)
+	delegate.Styles.DimmedTitle = baseTitle.Foreground(lipgloss.Color(string(Muted)))
+	delegate.Styles.NormalDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
+	delegate.Styles.SelectedDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
+	delegate.Styles.DimmedDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
 	delegate.Styles.FilterMatch = lipgloss.NewStyle().Underline(true)
 
 	listItems := make([]list.Item, len(items))
@@ -137,15 +137,17 @@ func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfi
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
 	l.DisableQuitKeybindings()
-	l.Styles.HelpStyle = HintStyle
-	l.Styles.PaginationStyle = HintStyle
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
+	l.Styles.HelpStyle = hintStyle
+	l.Styles.PaginationStyle = hintStyle
 
 	helpModel := help.New()
-	helpModel.Styles.ShortKey = KeyStyle
-	helpModel.Styles.ShortDesc = HintStyle
-	helpModel.Styles.FullKey = KeyStyle
-	helpModel.Styles.FullDesc = HintStyle
-	helpModel.Styles.Ellipsis = HintStyle
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Accent))).Bold(true)
+	helpModel.Styles.ShortKey = keyStyle
+	helpModel.Styles.ShortDesc = hintStyle
+	helpModel.Styles.FullKey = keyStyle
+	helpModel.Styles.FullDesc = hintStyle
+	helpModel.Styles.Ellipsis = hintStyle
 
 	keys := newMenuKeyMap(cfg.allowBack, cfg.backLabel)
 
@@ -169,7 +171,7 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		width := clampSize(msg.Width-2, 40)
 		height := clampSize(msg.Height-8, 10)
 		m.list.SetSize(width, height)
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
 			if item, ok := m.list.SelectedItem().(MenuItem); ok {
@@ -196,14 +198,16 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m menuModel) View() string {
+func (m menuModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.View{}
 	}
 
 	content := m.list.View()
 	footer := m.help.View(m.keys)
-	return Frame(m.title, m.subtitle, content, footer)
+	v := tea.NewView(Frame(m.title, m.subtitle, content, footer))
+	v.AltScreen = true
+	return v
 }
 
 func clampSize(value int, min int) int {
@@ -235,7 +239,7 @@ func RunMenuWithOptions(title string, subtitle string, items []MenuItem, options
 }
 
 func runMenuModel(model menuModel) (string, error) {
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	program := tea.NewProgram(model)
 	result, err := program.Run()
 	if err != nil {
 		return "", err

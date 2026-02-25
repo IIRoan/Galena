@@ -221,7 +221,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 	if !exec.CheckCommand("podman") {
 		msg := "trivy not found and podman unavailable; cannot generate SBOM"
 		logger.Error(msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	logger.Info("trivy not found; using container fallback")

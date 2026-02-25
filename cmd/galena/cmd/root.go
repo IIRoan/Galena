@@ -15,9 +15,11 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/iiroan/galena/internal/build"
+	"github.com/iiroan/galena/internal/ci"
 	"github.com/iiroan/galena/internal/config"
 	"github.com/iiroan/galena/internal/platform"
 	"github.com/iiroan/galena/internal/ui"
+	"github.com/iiroan/galena/internal/validate"
 )
 
 var (
@@ -79,7 +81,8 @@ func runRootTUI() error {
 		{ID: "build", TitleText: "Build", Details: "Step-by-step flow for container or disk builds with a clear plan summary"},
 		{ID: "fast-build", TitleText: "Fast Build", Details: "One-shot local build for a container and standard ISO"},
 		{ID: "status", TitleText: "Status", Details: "Review project config, variants, local images, and tool availability"},
-		{ID: "validate", TitleText: "Validate", Details: "Run config and project checks matching CI validations"},
+		{ID: "validate", TitleText: "Validate", Details: "Run all config/project checks, including golangci-lint"},
+		{ID: "go-lint", TitleText: "Go Lint", Details: "Run golangci-lint only for quick Go feedback"},
 		{ID: "settings", TitleText: "Settings", Details: "Tune theme, layout, and default build behavior"},
 		{ID: "clean", TitleText: "Clean", Details: "Delete build outputs and temporary files"},
 		{ID: "exit", TitleText: "Exit", Details: "Close the control plane"},
@@ -118,6 +121,8 @@ func runRootChoice(choice string) error {
 		return statusCmd.RunE(statusCmd, []string{})
 	case "validate":
 		return validateCmd.RunE(validateCmd, []string{})
+	case "go-lint":
+		return runGoLint()
 	case "clean":
 		return cleanCmd.RunE(cleanCmd, []string{})
 	case "settings":
@@ -140,6 +145,7 @@ func runRootFallback() error {
 			huh.NewOption("Fast Build", "fast-build"),
 			huh.NewOption("Status", "status"),
 			huh.NewOption("Validate", "validate"),
+			huh.NewOption("Go Lint", "go-lint"),
 			huh.NewOption("Settings", "settings"),
 			huh.NewOption("Clean", "clean"),
 			huh.NewOption("Exit", "exit"),
@@ -217,6 +223,31 @@ func runFastBuild() error {
 		logFile,
 	)))
 
+	return nil
+}
+
+func runGoLint() error {
+	ctx := context.Background()
+	rootDir, err := getProjectRoot()
+	if err != nil {
+		return fmt.Errorf("finding project root: %w", err)
+	}
+
+	ui.StartScreen("GO LINT", "Run golangci-lint for Go code quality checks")
+	result := validate.Golangci(ctx, rootDir)
+	printValidationResult(ci.Detect(), "Go Lint", result)
+	fmt.Println()
+
+	if len(result.Errors) > 0 {
+		fmt.Println(ui.ErrorBox.Render(fmt.Sprintf("Go lint failed with %d issue(s)", len(result.Errors))))
+		return fmt.Errorf("go lint failed")
+	}
+	if len(result.Warnings) > 0 || len(result.Pending) > 0 {
+		fmt.Println(ui.InfoBox.Render("Go lint completed with warnings"))
+		return nil
+	}
+
+	fmt.Println(ui.SuccessBox.Render("Go lint passed"))
 	return nil
 }
 

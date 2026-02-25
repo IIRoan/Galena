@@ -15,8 +15,8 @@
 
 1. **Shellcheck** - `shellcheck *.sh` on all modified shell files
 2. **YAML validation** - `python3 -c "import yaml; yaml.safe_load(open('file.yml'))"` on all modified YAML
-3. **Justfile syntax** - `just --list` to verify
-4. **Confirm with user** - Always confirm before committing and pushing
+3. **Go linting** - `golangci-lint run`
+5. **Confirm with user** - Always confirm before committing and pushing
 
 ## Repository Structure
 
@@ -131,6 +131,7 @@ The repository includes automated validation on pull requests:
 - **validate-brewfiles.yml** - Validates Homebrew Brewfile syntax
 - **validate-flatpaks.yml** - Checks Flatpak app IDs exist on Flathub
 - **validate-justfiles.yml** - Validates just file syntax
+- **validate-golangci-lint.yml** - Runs `golangci-lint run` on Go code
 - **validate-renovate.yml** - Validates Renovate configuration
 
 **When adding files**: These validations run automatically on PRs. Fix any errors before merge.
@@ -616,7 +617,7 @@ cp /ctx/oci/brew/*.sh /usr/local/bin/
 5. **NEVER** use `dnf5` in ujust files - only Brewfile/Flatpak shortcuts
 6. **ALWAYS** work on testing branch for development
 7. **ALWAYS** confirm with user before deviating from @ublue-os/bluefin patterns
-8. **ALWAYS** run shellcheck/YAML validation before committing
+8. **ALWAYS** run shellcheck/YAML/golangci-lint validation before committing
 9. **ALWAYS** update bootc switch URL in `iso/iso.toml` to match user's repo
 10. **ALWAYS** follow numbered script convention: `10-*.sh`, `20-*.sh`, `30-*.sh`
 11. **ALWAYS** check example scripts before creating new patterns (`.example` files in `build/`)

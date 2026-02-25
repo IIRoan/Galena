@@ -86,7 +86,9 @@ func SetOutput(name, value string) error {
 	if err != nil {
 		return fmt.Errorf("opening GITHUB_OUTPUT: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	// Handle multiline values
 	if strings.Contains(value, "\n") {
@@ -110,7 +112,9 @@ func SetEnv(name, value string) error {
 	if err != nil {
 		return fmt.Errorf("opening GITHUB_ENV: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	_, err = fmt.Fprintf(f, "%s=%s\n", name, value)
 	return err
@@ -127,7 +131,9 @@ func AddPath(dir string) error {
 	if err != nil {
 		return fmt.Errorf("opening GITHUB_PATH: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	_, err = fmt.Fprintf(f, "%s\n", dir)
 	return err
@@ -183,7 +189,9 @@ func AddSummary(markdown string) error {
 	if err != nil {
 		return fmt.Errorf("opening GITHUB_STEP_SUMMARY: %w", err)
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	_, err = fmt.Fprintf(f, "%s\n", markdown)
 	return err
@@ -299,17 +307,15 @@ func (e *Environment) GenerateLabels(imageName string, cfg LabelConfig) map[stri
 	}
 
 	if e.Repository != "" {
-		ref := e.SHA
+		ref := e.RefName
+		// If we're in a PR, use the SHA, otherwise use the branch name for more persistent links.
+		if e.IsPullRequest {
+			ref = e.SHA
+		}
 		if ref == "" {
 			ref = "main"
 		}
-		// If we're in a PR, use the SHA, otherwise use the branch name for more persistent links
-		if e.IsPullRequest {
-			ref = e.SHA
-		} else {
-			ref = e.RefName
-		}
-		
+
 		labels["org.opencontainers.image.source"] = fmt.Sprintf("https://github.com/%s/blob/%s/Containerfile", e.Repository, ref)
 		labels["org.opencontainers.image.url"] = fmt.Sprintf("https://github.com/%s/tree/%s", e.Repository, ref)
 		labels["org.opencontainers.image.documentation"] = fmt.Sprintf("https://raw.githubusercontent.com/%s/%s/README.md", e.Repository, ref)

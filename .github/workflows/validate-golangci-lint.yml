@@ -1,0 +1,67 @@
+name: Validate Go Lint
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+      - ".golangci.yaml"
+      - ".golangci.toml"
+      - ".golangci.json"
+  push:
+    branches:
+      - main
+    paths:
+      - "**/*.go"
+      - "go.mod"
+      - "go.sum"
+      - ".golangci.yml"
+      - ".golangci.yaml"
+      - ".golangci.toml"
+      - ".golangci.json"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install golangci-lint
+        shell: bash
+        run: |
+          GOBIN="$HOME/.local/bin" go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Build galena
+        shell: bash
+        run: go build -o galena ./cmd/galena
+
+      - name: Run Go lint via galena
+        id: golangci
+        shell: bash
+        run: ./galena validate --only golangci
+
+      - name: Write lint summary
+        if: always()
+        env:
+          OUTCOME: ${{ steps.golangci.outcome }}
+        run: |
+          {
+            echo "## Go Lint Summary"
+            echo ""
+            echo "| Property | Value |"
+            echo "| --- | --- |"
+            echo "| Outcome | ${OUTCOME} |"
+            echo "| Command | \`./galena validate --only golangci\` |"
+          } >> "${GITHUB_STEP_SUMMARY}"

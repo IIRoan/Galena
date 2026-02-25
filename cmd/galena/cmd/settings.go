@@ -251,7 +251,7 @@ Save:
 		return nil
 	}
 
-	if !(changedUI || changedDefaults || changedFlags || changedAdvanced) {
+	if !changedUI && !changedDefaults && !changedFlags && !changedAdvanced {
 		return nil
 	}
 
