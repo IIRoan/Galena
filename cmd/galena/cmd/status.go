@@ -21,7 +21,7 @@ var statusCmd = &cobra.Command{
   - Tool availability
 
 Examples:
-  galena status`,
+  galena-build status`,
 	RunE: runStatus,
 }
 

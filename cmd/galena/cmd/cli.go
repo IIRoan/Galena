@@ -20,7 +20,7 @@ var cliCmd = &cobra.Command{
 
 var cliBuildCmd = &cobra.Command{
 	Use:   "build",
-	Short: "Rebuild galena and start the CLI",
+	Short: "Rebuild galena binaries and start galena-build",
 	RunE:  runCLIBuild,
 }
 
@@ -36,7 +36,7 @@ func runCLIBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("finding project root: %w", err)
 	}
 
-	ui.StartScreen("CLI BUILD", "Rebuilding galena and starting a new session")
+	ui.StartScreen("CLI BUILD", "Rebuilding galena binaries and starting galena-build")
 
 	if err := exec.RequireCommands("make"); err != nil {
 		return err
@@ -47,7 +47,7 @@ func runCLIBuild(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cli build failed: %w", buildResult.Err)
 	}
 
-	binaryPath := filepath.Join(rootDir, "galena")
+	binaryPath := filepath.Join(rootDir, "galena-build")
 	if _, err := os.Stat(binaryPath); err != nil {
 		return fmt.Errorf("built binary not found at %s: %w", binaryPath, err)
 	}

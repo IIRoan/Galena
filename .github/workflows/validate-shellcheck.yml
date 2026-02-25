@@ -27,7 +27,7 @@ jobs:
 
       - name: Build galena
         shell: bash
-        run: go build -o galena ./cmd/galena
+        run: go build -o galena ./cmd/galena-build
 
       - name: Validate Shell Scripts
         id: validate

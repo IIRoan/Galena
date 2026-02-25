@@ -2,6 +2,8 @@ package ui
 
 import (
 	"fmt"
+	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/help"
 	"charm.land/bubbles/v2/key"
@@ -102,6 +104,8 @@ func (m MenuItem) Description() string { return m.Details }
 // FilterValue returns the filterable text.
 func (m MenuItem) FilterValue() string { return m.TitleText }
 
+type menuTickMsg time.Time
+
 type menuModel struct {
 	list      list.Model
 	title     string
@@ -111,20 +115,25 @@ type menuModel struct {
 	allowBack bool
 	help      help.Model
 	keys      menuKeyMap
+
+	width  int
+	height int
+	now    time.Time
+	pulse  int
 }
 
 func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfig) menuModel {
 	delegate := list.NewDefaultDelegate()
 	delegate.ShowDescription = true
-	delegate.SetSpacing(0)
+	delegate.SetSpacing(1)
 	baseTitle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Foreground)))
 	delegate.Styles.NormalTitle = baseTitle
-	delegate.Styles.SelectedTitle = baseTitle.Foreground(lipgloss.Color(string(Primary))).Bold(true)
+	delegate.Styles.SelectedTitle = baseTitle.Foreground(lipgloss.Color(string(Accent))).Bold(true)
 	delegate.Styles.DimmedTitle = baseTitle.Foreground(lipgloss.Color(string(Muted)))
 	delegate.Styles.NormalDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
-	delegate.Styles.SelectedDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
+	delegate.Styles.SelectedDesc = baseTitle.Foreground(lipgloss.Color(string(Highlight)))
 	delegate.Styles.DimmedDesc = baseTitle.Foreground(lipgloss.Color(string(Muted)))
-	delegate.Styles.FilterMatch = lipgloss.NewStyle().Underline(true)
+	delegate.Styles.FilterMatch = lipgloss.NewStyle().Underline(true).Foreground(lipgloss.Color(string(Primary)))
 
 	listItems := make([]list.Item, len(items))
 	for i, item := range items {
@@ -137,12 +146,12 @@ func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfi
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
 	l.DisableQuitKeybindings()
-	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
-	l.Styles.HelpStyle = hintStyle
-	l.Styles.PaginationStyle = hintStyle
+	l.Styles.HelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
+	l.Styles.PaginationStyle = l.Styles.HelpStyle
 
 	helpModel := help.New()
 	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Accent))).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
 	helpModel.Styles.ShortKey = keyStyle
 	helpModel.Styles.ShortDesc = hintStyle
 	helpModel.Styles.FullKey = keyStyle
@@ -158,19 +167,30 @@ func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfi
 		allowBack: cfg.allowBack,
 		help:      helpModel,
 		keys:      keys,
+		now:       time.Now(),
 	}
 }
 
+func menuTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return menuTickMsg(t)
+	})
+}
+
 func (m menuModel) Init() tea.Cmd {
-	return nil
+	return menuTick()
 }
 
 func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		width := clampSize(msg.Width-2, 40)
-		height := clampSize(msg.Height-8, 10)
-		m.list.SetSize(width, height)
+		m.width = msg.Width
+		m.height = msg.Height
+		m.resizeList()
+	case menuTickMsg:
+		m.now = time.Time(msg)
+		m.pulse++
+		return m, menuTick()
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
@@ -198,16 +218,137 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m *menuModel) resizeList() {
+	width := m.width
+	height := m.height
+	if width <= 0 {
+		width = terminalWidth()
+	}
+	if height <= 0 {
+		height = 26
+	}
+
+	left := int(float64(width) * 0.58)
+	if left < 42 {
+		left = 42
+	}
+	if left > width-28 {
+		left = width - 28
+	}
+	if left < 30 {
+		left = 30
+	}
+
+	listWidth := left - 7
+	if listWidth < 24 {
+		listWidth = 24
+	}
+	listHeight := height - 12
+	if listHeight < 8 {
+		listHeight = 8
+	}
+	m.list.SetSize(listWidth, listHeight)
+}
+
 func (m menuModel) View() tea.View {
 	if m.quitting {
 		return tea.View{}
 	}
 
-	content := m.list.View()
+	width := m.width
+	height := m.height
+	if width <= 0 {
+		width = terminalWidth()
+	}
+	if height <= 0 {
+		height = 26
+	}
+
+	leftWidth := int(float64(width) * 0.58)
+	if leftWidth < 42 {
+		leftWidth = 42
+	}
+	if leftWidth > width-28 {
+		leftWidth = width - 28
+	}
+	if leftWidth < 30 {
+		leftWidth = 30
+	}
+	rightWidth := width - leftWidth - 3
+	if rightWidth < 24 {
+		rightWidth = 24
+	}
+
+	bodyHeight := height - 9
+	if bodyHeight < 10 {
+		bodyHeight = 10
+	}
+
+	leftPanel := Panel.Copy().
+		Width(leftWidth).
+		Height(bodyHeight).
+		Render(m.renderLeftPanel(leftWidth - 4))
+
+	rightPanel := Panel.Copy().
+		Width(rightWidth).
+		Height(bodyHeight).
+		Render(m.renderRightPanel(rightWidth - 4))
+
+	body := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, " ", rightPanel)
 	footer := m.help.View(m.keys)
-	v := tea.NewView(Frame(m.title, m.subtitle, content, footer))
+
+	v := tea.NewView(Frame(m.title, m.subtitle, body, footer))
 	v.AltScreen = true
 	return v
+}
+
+func (m menuModel) renderLeftPanel(innerWidth int) string {
+	header := AccentStyle().Render("ORBIT NAV")
+	line := lipgloss.NewStyle().
+		Foreground(lipgloss.Color(string(Border))).
+		Render(strings.Repeat("─", clampSize(innerWidth, 20)))
+	return lipgloss.JoinVertical(lipgloss.Left, header, line, m.list.View())
+}
+
+func (m menuModel) renderRightPanel(innerWidth int) string {
+	item, _ := m.list.SelectedItem().(MenuItem)
+	indicator := "◐"
+	if m.pulse%2 == 1 {
+		indicator = "◓"
+	}
+
+	clock := m.now.Format("15:04:05")
+	if clock == "00:00:00" {
+		clock = time.Now().Format("15:04:05")
+	}
+
+	section := []string{
+		AccentStyle().Render("SECTOR DATA"),
+		MutedStyle.Render(strings.Repeat("─", clampSize(innerWidth, 20))),
+		fmt.Sprintf("%s  %s", PrimaryStyle().Render(indicator), MutedStyle.Render("sync "+clock)),
+		"",
+	}
+
+	if item.TitleText != "" {
+		section = append(section,
+			PrimaryStyle().Render(item.TitleText),
+			MutedStyle.Width(innerWidth).Render(item.Details),
+			"",
+			fmt.Sprintf("%s %s", KeyStyle.Render("ID"), item.ID),
+		)
+	} else {
+		section = append(section, MutedStyle.Render("No selection"))
+	}
+
+	section = append(section,
+		"",
+		AccentStyle().Render("KEYS"),
+		MutedStyle.Render("↑/↓ move"),
+		MutedStyle.Render("enter select"),
+		MutedStyle.Render("/ filter"),
+	)
+
+	return strings.Join(section, "\n")
 }
 
 func clampSize(value int, min int) int {

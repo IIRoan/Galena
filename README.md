@@ -77,7 +77,7 @@ Universal Blue images come with all the necessary tools pre-installed:
 **If not on Universal Blue, you'll need:**
 
 - **Linux system** (required for bootc-image-builder)
-- **Go 1.23+** (for building the CLI)
+- **Go 1.24.2+** (for building the CLI)
 - **Podman** (for container builds)
 - **sudo access** (for disk image builds)
 
@@ -96,18 +96,18 @@ brew install go
 
 ```bash
 # Download and install the latest version
-wget https://go.dev/dl/go1.23.0.linux-amd64.tar.gz
-sudo tar -C /usr/local -xzf go1.23.0.linux-amd64.tar.gz
+wget https://go.dev/dl/go1.24.2.linux-amd64.tar.gz
+sudo tar -C /usr/local -xzf go1.24.2.linux-amd64.tar.gz
 export PATH=$PATH:/usr/local/go/bin
 ```
 
 Verify Go installation:
 
 ```bash
-go version  # Should show go1.23 or higher
+go version  # Should show go1.24.2 or higher
 ```
 
-### Building the galena CLI
+### Building the Galena CLIs
 
 **Step 1: Clone the repository**
 
@@ -116,7 +116,7 @@ git clone https://github.com/iiroan/galena.git
 cd galena
 ```
 
-**Step 2: Build the CLI**
+**Step 2: Build the CLIs**
 
 ```bash
 # Using Make (recommended)
@@ -124,9 +124,11 @@ make build
 
 # Or using Go directly
 go build -o galena ./cmd/galena/
+go build -o galena-build ./cmd/galena-build/
 
 # Verify it works
 ./galena version
+./galena-build version
 ```
 
 **Step 3: (Optional) Install system-wide**
@@ -144,40 +146,39 @@ galena version
 Once the CLI is built:
 
 ```bash
-# Run interactive mode (TUI)
+# Device management TUI
 ./galena
 
-# Or use specific commands
-./galena build              # Interactive build wizard
-./galena build --push       # Build and push to registry
-./galena disk iso           # Build ISO installer
-./galena status             # Show project status
-./galena validate           # Run all validation checks
+# Build/development TUI
+./galena-build
+
+# Build and validation commands
+./galena-build build         # Interactive build wizard
+./galena-build build --push  # Build and push to registry
+./galena-build disk iso      # Build ISO installer
+./galena-build status        # Show project status
+./galena-build validate      # Run all validation checks
 ```
 
-### The galena CLI
+### CLI Split
 
-The `galena` CLI is built with [Charm](https://charm.sh/) libraries (Bubble Tea, Lipgloss, Huh) for a beautiful terminal experience.
+Both CLIs are built with [Charm](https://charm.sh/) libraries (Bubble Tea, Lipgloss, Huh):
 
-**Main Commands:**
+**Runtime Management (`galena`)**
 
 ```bash
-galena                      # Interactive TUI control plane
-galena build                # Build container image (interactive or flags)
-galena disk <type>          # Build bootable disk images
-galena vm run               # Run VM for testing
-galena sign <image>         # Sign images with cosign
-galena sbom <image>         # Generate SBOM with Trivy
-galena validate             # Run validation checks
-galena status               # Show project and system status
-galena clean                # Clean build artifacts
-galena version              # Show version information
+galena                      # Management control plane
+galena apps                 # Brew/Flatpak catalog status and installs
+galena ujust                # Run Bluefin/ujust tasks
+galena update               # bootc upgrade workflow
+galena status               # Runtime device status
+galena setup                # First-boot setup wizard
 ```
 
-**Build Flags:**
+**Build & Development (`galena-build`)**
 
 ```bash
-galena build \
+galena-build build \
   --variant main \          # Image variant (main, nvidia, dx)
   --tag main \              # Image tag (main, stable, latest, beta)
   --push \                  # Push to registry after build
@@ -188,13 +189,7 @@ galena build \
 
 **Disk Image Types:**
 
-```bash
-galena disk iso             # Standard ISO installer
-galena disk anaconda-iso    # Anaconda-based ISO installer
-galena disk qcow2           # QEMU/KVM virtual machine image
-galena disk raw             # Raw disk image
-galena disk vmdk            # VMware disk image
-```
+`galena-build` also exposes `disk`, `vm`, `ci`, `validate`, `status`, `clean`, `sign`, and `sbom`.
 
 ### Build Workflows
 
@@ -202,19 +197,19 @@ galena disk vmdk            # VMware disk image
 
 ```bash
 # Fast build: container + ISO
-./galena                    # Choose "Fast Build" from menu
+./galena-build              # Choose "Fast Build" from menu
 
 # Full workflow with testing
-./galena build              # Build container
-./galena disk qcow2         # Create VM image
-./galena vm run             # Test in VM
+./galena-build build        # Build container
+./galena-build disk qcow2   # Create VM image
+./galena-build vm run       # Test in VM
 ```
 
 **CI/CD (GitHub Actions):**
 
 ```bash
 # The CI command is optimized for GitHub Actions
-./galena ci build --push --sign --sbom
+./galena-build ci build --push --sign --sbom
 ```
 
 **Using Just (Legacy):**
@@ -265,7 +260,7 @@ For the smoothest development experience, use a Universal Blue-based system (Blu
 
 **If you're not on Universal Blue:**
 
-1. Install Go 1.23+ (see "Installing Go" section above)
+1. Install Go 1.24.2+ (see "Installing Go" section above)
 2. Install Podman: `sudo dnf install podman` (Fedora/RHEL) or `sudo apt install podman` (Ubuntu)
 3. Ensure your user is in the `docker` or `podman` group for rootless containers
 

@@ -29,7 +29,7 @@ env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"
   DEFAULT_TAG: "main"
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.24.2"
 
 jobs:
   build-disk:
@@ -63,7 +63,7 @@ jobs:
 
       - name: Build galena
         run: |
-          go build -o ${{ github.workspace }}/galena ./cmd/galena/
+          go build -o ${{ github.workspace }}/galena ./cmd/galena-build/
           chmod +x ${{ github.workspace }}/galena
 
       - name: Setup CI environment

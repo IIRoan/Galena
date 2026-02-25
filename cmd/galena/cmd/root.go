@@ -41,25 +41,39 @@ const (
 
 var rootCmd = &cobra.Command{
 	Use:   "galena",
-	Short: "Build and manage OCI-native OS images",
-	Long: ui.Banner() + `
-galena is a CLI tool for building, testing, and deploying
-OCI-native bootable operating system images.`,
+	Short: "Manage a Galena device",
+	Long: `galena is a device management CLI for day-to-day system operations,
+application management, and first-boot workflows.`,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		setupLogger()
 
 		if cmd.Name() != "version" && cmd.Name() != "help" {
-			var err error
-			if cfgFile != "" {
-				cfg, err = config.Load(cfgFile)
-			} else {
-				cfg, err = config.LoadFromProject()
-			}
-			if err != nil {
-				logger.Warn("could not load config, using defaults", "error", err)
-				cfg = config.DefaultConfig()
+			switch activeProfile {
+			case cliProfileBuild:
+				var err error
+				if cfgFile != "" {
+					cfg, err = config.Load(cfgFile)
+				} else {
+					cfg, err = config.LoadFromProject()
+				}
+				if err != nil {
+					logger.Warn("could not load config, using defaults", "error", err)
+					cfg = config.DefaultConfig()
+				}
+			default:
+				if cfgFile != "" {
+					loaded, err := config.Load(cfgFile)
+					if err != nil {
+						logger.Warn("could not load config, using defaults", "error", err)
+						cfg = config.DefaultConfig()
+					} else {
+						cfg = loaded
+					}
+				} else {
+					cfg = config.DefaultConfig()
+				}
 			}
 		}
 
@@ -70,7 +84,10 @@ OCI-native bootable operating system images.`,
 	},
 	RunE: func(cmd *cobra.Command, args []string) error {
 		if len(args) == 0 {
-			return runRootTUI()
+			if activeProfile == cliProfileBuild {
+				return runRootTUI()
+			}
+			return runManagementTUI()
 		}
 		return cmd.Help()
 	},
@@ -83,7 +100,7 @@ func runRootTUI() error {
 		{ID: "status", TitleText: "Status", Details: "Review project config, variants, local images, and tool availability"},
 		{ID: "validate", TitleText: "Validate", Details: "Run all config/project checks, including golangci-lint"},
 		{ID: "go-lint", TitleText: "Go Lint", Details: "Run golangci-lint only for quick Go feedback"},
-		{ID: "settings", TitleText: "Settings", Details: "Tune theme, layout, and default build behavior"},
+		{ID: "settings", TitleText: "Settings", Details: "Tune layout and default build behavior"},
 		{ID: "clean", TitleText: "Clean", Details: "Delete build outputs and temporary files"},
 		{ID: "exit", TitleText: "Exit", Details: "Close the control plane"},
 	}
@@ -252,6 +269,16 @@ func runGoLint() error {
 }
 
 func Execute() error {
+	return ExecuteManagement()
+}
+
+func ExecuteManagement() error {
+	configureRootForProfile(cliProfileManagement)
+	return rootCmd.Execute()
+}
+
+func ExecuteBuild() error {
+	configureRootForProfile(cliProfileBuild)
 	return rootCmd.Execute()
 }
 
@@ -261,27 +288,13 @@ func init() {
 	rootCmd.PersistentFlags().BoolVar(&noColor, "no-color", false, "Disable colored output")
 	rootCmd.PersistentFlags().StringVar(&cfgFile, "config", "", "Config file (default: galena.yaml)")
 	rootCmd.PersistentFlags().StringVarP(&projectDir, "project", "C", "", "Project directory")
-
-	rootCmd.AddCommand(buildCmd)
-	rootCmd.AddCommand(diskCmd)
-	rootCmd.AddCommand(vmCmd)
-	rootCmd.AddCommand(pushCmd)
-	rootCmd.AddCommand(signCmd)
-	rootCmd.AddCommand(sbomCmd)
-	rootCmd.AddCommand(cliCmd)
-	rootCmd.AddCommand(statusCmd)
-	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(cleanCmd)
-	rootCmd.AddCommand(lintCmd)
-	rootCmd.AddCommand(validateCmd)
-	rootCmd.AddCommand(settingsCmd)
 }
 
 func applyUISettings() {
 	if cfg == nil {
 		ui.ApplyPreferences(ui.Preferences{
-			Theme:      "aurora",
-			ShowBanner: true,
+			Theme:      "space",
+			ShowBanner: false,
 			Dense:      false,
 			NoColor:    noColor,
 			Advanced:   false,
@@ -289,8 +302,8 @@ func applyUISettings() {
 		return
 	}
 	ui.ApplyPreferences(ui.Preferences{
-		Theme:      cfg.UI.Theme,
-		ShowBanner: cfg.UI.ShowBanner,
+		Theme:      "space",
+		ShowBanner: false,
 		Dense:      cfg.UI.Dense,
 		NoColor:    cfg.UI.NoColor || noColor,
 		Advanced:   cfg.UI.Advanced,

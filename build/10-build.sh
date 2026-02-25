@@ -33,7 +33,7 @@ mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
 echo "::group:: Install Galena CLI"
-echo "galena CLI is copied from the galena-cli-builder stage in Containerfile."
+echo "galena and galena-build CLIs are copied from the galena-cli-builder stage in Containerfile."
 echo "::endgroup::"
 
 # Consolidate Just Files

@@ -24,12 +24,6 @@ func runSettings(cmd *cobra.Command, args []string) error {
 		cfg = config.DefaultConfig()
 	}
 
-	themeName := cfg.UI.Theme
-	if themeName == "" {
-		themeName = "aurora"
-	}
-
-	showBanner := cfg.UI.ShowBanner
 	dense := cfg.UI.Dense
 	noColorPref := cfg.UI.NoColor
 	advancedMode := cfg.UI.Advanced
@@ -55,11 +49,6 @@ func runSettings(cmd *cobra.Command, args []string) error {
 	buildArgsInput := formatKeyValuePairs(cfg.Build.BuildArgs)
 	timeoutInput := cfg.Build.Timeout
 
-	themeOptions := make([]huh.Option[string], 0)
-	for _, name := range ui.ThemeNames() {
-		themeOptions = append(themeOptions, huh.NewOption(name, name))
-	}
-
 	variantOptions := make([]huh.Option[string], 0)
 	for _, name := range cfg.ListVariantNames() {
 		variantOptions = append(variantOptions, huh.NewOption(name, name))
@@ -78,7 +67,7 @@ func runSettings(cmd *cobra.Command, args []string) error {
 
 	for {
 		choice, err := ui.RunMenuWithOptions("SETTINGS", "Select a settings section", []ui.MenuItem{
-			{ID: "ui", TitleText: "Theme & Layout", Details: "Colors, banner visibility, spacing, and color mode"},
+			{ID: "ui", TitleText: "Display & Prompts", Details: "Layout density, color mode, and advanced prompts"},
 			{ID: "defaults", TitleText: "Build Defaults", Details: "Default variant, tag, and build number"},
 			{ID: "flags", TitleText: "Build Flags", Details: "Push/sign/SBOM defaults and cache behavior"},
 			{ID: "advanced", TitleText: "Advanced Build Options", Details: "Build args and timeouts"},
@@ -95,15 +84,6 @@ func runSettings(cmd *cobra.Command, args []string) error {
 		case "ui":
 			form := huh.NewForm(
 				huh.NewGroup(
-					huh.NewSelect[string]().
-						Title("Theme").
-						Description("Choose the TUI color palette").
-						Options(themeOptions...).
-						Value(&themeName),
-					huh.NewConfirm().
-						Title("Show Banner").
-						Description("Display the galena banner on screens").
-						Value(&showBanner),
 					huh.NewConfirm().
 						Title("Dense Layout").
 						Description("Reduce vertical spacing in the TUI").
@@ -277,8 +257,8 @@ Save:
 
 	if changedUI {
 		cfg.UI = config.UIConfig{
-			Theme:      themeName,
-			ShowBanner: showBanner,
+			Theme:      "space",
+			ShowBanner: false,
 			Dense:      dense,
 			NoColor:    noColorPref,
 			Advanced:   advancedMode,
@@ -319,8 +299,8 @@ Save:
 	}
 
 	ui.ApplyPreferences(ui.Preferences{
-		Theme:      cfg.UI.Theme,
-		ShowBanner: cfg.UI.ShowBanner,
+		Theme:      "space",
+		ShowBanner: false,
 		Dense:      cfg.UI.Dense,
 		NoColor:    cfg.UI.NoColor || noColor,
 		Advanced:   cfg.UI.Advanced,

@@ -33,16 +33,16 @@ By default, removes:
 
 Examples:
   # Clean local images only
-  galena clean --images
+  galena-build clean --images
 
   # Clean output directory only
-  galena clean --output
+  galena-build clean --output
 
   # Clean everything
-  galena clean --all
+  galena-build clean --all
 
   # Skip confirmation
-  galena clean --all -y`,
+  galena-build clean --all -y`,
 	RunE: runClean,
 }
 

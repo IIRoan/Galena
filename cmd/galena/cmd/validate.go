@@ -37,13 +37,13 @@ In CI environments (GitHub Actions), output is formatted with
 log groups and annotations for better integration.
 
 Examples:
-  galena validate
-  galena validate --skip-containerfile  # Skip Containerfile validation
-  galena validate --skip-brew           # Skip Brewfile validation
-  galena validate --skip-flatpak        # Skip Flatpak validation
-  galena validate --only shellcheck     # Run only shellcheck
-  galena validate --only golangci       # Run only golangci-lint
-  galena validate --skip brew,flatpak   # Skip specific checks`,
+  galena-build validate
+  galena-build validate --skip-containerfile  # Skip Containerfile validation
+  galena-build validate --skip-brew           # Skip Brewfile validation
+  galena-build validate --skip-flatpak        # Skip Flatpak validation
+  galena-build validate --only shellcheck     # Run only shellcheck
+  galena-build validate --only golangci       # Run only golangci-lint
+  galena-build validate --skip brew,flatpak   # Skip specific checks`,
 	RunE: runValidate,
 }
 
