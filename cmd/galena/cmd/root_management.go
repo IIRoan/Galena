@@ -41,10 +41,6 @@ func runManagementTUI() error {
 			}
 			return err
 		}
-
-		if err := waitForEnter("Press enter to return to Galena Management"); err != nil {
-			return err
-		}
 	}
 }
 

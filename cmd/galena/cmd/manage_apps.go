@@ -96,10 +96,6 @@ func runApps(cmd *cobra.Command, args []string) error {
 		default:
 			return nil
 		}
-
-		if err := waitForEnter("Press enter to return to Applications"); err != nil {
-			return err
-		}
 	}
 }
 

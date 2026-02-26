@@ -459,17 +459,18 @@ func (m menuModel) renderRightPanel(innerWidth int, innerHeight int) string {
 func calculateMenuLayout(width int, height int) menuLayout {
 	const (
 		gap            = 2
-		minLeftWidth   = 40
-		minRightWidth  = 20
-		stackThreshold = 90
+		minLeftWidth   = 48
+		minRightWidth  = 26
+		maxRightWidth  = 36
+		stackThreshold = 84
 		minPanelHeight = 8
 		minListHeight  = 5
-		leftListExtraH = 4
+		leftListExtraH = 2
 	)
 
-	bodyHeight := height - 8
-	if bodyHeight < 10 {
-		bodyHeight = 10
+	bodyHeight := height - 6
+	if bodyHeight < 9 {
+		bodyHeight = 9
 	}
 
 	stacked := width < stackThreshold
@@ -494,7 +495,7 @@ func calculateMenuLayout(width int, height int) menuLayout {
 			}
 		}
 
-		listWidth := width - 6
+		listWidth := width - 5
 		if listWidth < 4 {
 			listWidth = 4
 		}
@@ -514,21 +515,27 @@ func calculateMenuLayout(width int, height int) menuLayout {
 		}
 	}
 
-	maxLeftWidth := width - minRightWidth - gap
-	leftWidth := int(float64(width) * 0.62)
+	rightWidth := width / 4
+	if rightWidth < minRightWidth {
+		rightWidth = minRightWidth
+	}
+	if rightWidth > maxRightWidth {
+		rightWidth = maxRightWidth
+	}
+	leftWidth := width - rightWidth - gap
 	if leftWidth < minLeftWidth {
 		leftWidth = minLeftWidth
+		rightWidth = width - leftWidth - gap
+		if rightWidth < minRightWidth {
+			rightWidth = minRightWidth
+		}
 	}
-	if leftWidth > maxLeftWidth {
-		leftWidth = maxLeftWidth
-	}
-	rightWidth := width - leftWidth - gap
 
-	listWidth := leftWidth - 5
+	listWidth := leftWidth - 4
 	if listWidth < 4 {
 		listWidth = 4
 	}
-	listHeight := bodyHeight - 6
+	listHeight := bodyHeight - 1
 	if listHeight < minListHeight {
 		listHeight = minListHeight
 	}
