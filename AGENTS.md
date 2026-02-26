@@ -15,14 +15,16 @@
 
 1. **Shellcheck** - `shellcheck *.sh` on all modified shell files
 2. **YAML validation** - `python3 -c "import yaml; yaml.safe_load(open('file.yml'))"` on all modified YAML
-3. **Justfile syntax** - `just --list` to verify
-4. **Confirm with user** - Always confirm before committing and pushing
+3. **Go linting** - `golangci-lint run`
+5. **Confirm with user** - Always confirm before committing and pushing
 
 ## Repository Structure
 
 ```
 ├── Containerfile          # Main build definition (multi-stage build with OCI imports)
 ├── Justfile              # Local build automation (image name, build commands)
+├── cmd/galena/           # Runtime management CLI (ships on Galena OS images)
+├── cmd/galena-build/     # Builder CLI for image development and CI workflows
 ├── build/                # Build-time scripts (10-build.sh, 20-chrome.sh, etc.)
 │   ├── 10-build.sh      # Main build script (copy custom files, install packages)
 │   ├── 20-*.sh.example  # Example third-party repos (rename to use)
@@ -65,15 +67,25 @@
 
 ## Core Principles
 
-### Custom Go CLI (`./galena`)
+### Custom Go CLIs (`./galena` and `./galena-build`)
 
-The project uses a custom Go-based CLI for core operations. ALWAYS prefer using the CLI over manual podman or just commands when possible.
+The project intentionally splits CLI responsibilities. ALWAYS prefer the correct CLI over manual podman or just commands when possible.
 
-- **Build**: `./galena build` (Interactive or flags like `--push`)
-- **Disk Images**: `./galena disk <type>` (iso, qcow2, raw, etc.)
-- **Validation**: `./galena validate` (Runs all checks: shellcheck, brew, flatpak, just, etc.)
-- **VM Testing**: `./galena vm run`
-- **SBOM**: `./galena sbom <image>`
+**Runtime Device Management (`./galena`)** - For Galena OS systems (on-device management):
+
+- **Applications**: `./galena apps`
+- **Status**: `./galena status`
+- **Updates**: `./galena update`
+- **Bluefin Tasks**: `./galena ujust`
+- **First Boot Setup**: `./galena setup`
+
+**Image Build & Development (`./galena-build`)** - For image creation, local testing, and CI:
+
+- **Build**: `./galena-build build` (Interactive or flags like `--push`)
+- **Disk Images**: `./galena-build disk <type>` (iso, qcow2, raw, etc.)
+- **Validation**: `./galena-build validate` (Runs all checks: shellcheck, brew, flatpak, just, etc.)
+- **VM Testing**: `./galena-build vm run`
+- **SBOM**: `./galena-build sbom <image>`
 
 ### Multi-Stage Build Architecture
 
@@ -131,6 +143,7 @@ The repository includes automated validation on pull requests:
 - **validate-brewfiles.yml** - Validates Homebrew Brewfile syntax
 - **validate-flatpaks.yml** - Checks Flatpak app IDs exist on Flathub
 - **validate-justfiles.yml** - Validates just file syntax
+- **validate-golangci-lint.yml** - Runs `golangci-lint run` on Go code
 - **validate-renovate.yml** - Validates Renovate configuration
 
 **When adding files**: These validations run automatically on PRs. Fix any errors before merge.
@@ -265,7 +278,7 @@ Branch=stable
 | Replace desktop          | Use example script                                    | `build/30-cosmic-desktop.sh.example`    |
 | Switch base image        | Update FROM line                                      | `Containerfile` line 38                 |
 | Add OCI containers       | Uncomment COPY --from= lines                          | `Containerfile` lines 13-18 (ctx stage) |
-| Test locally             | `just build && just build-qcow2 && just run-vm-qcow2` | Terminal                                |
+| Test locally             | `./galena-build build && ./galena-build disk qcow2 && ./galena-build vm run` | Terminal                                |
 | Deploy (production)      | `sudo bootc switch ghcr.io/user/repo:stable`          | Terminal                                |
 | Enable service           | `systemctl enable service.name`                       | `build/10-build.sh`                     |
 | Add COPR                 | enable → install → **DISABLE**                        | `build/10-build.sh`                     |
@@ -496,8 +509,8 @@ Branch=stable
 
 **Files**:
 
-- `iso/disk.toml` - VM images (QCOW2/RAW): `just build-qcow2`
-- `iso/iso.toml` - Installer ISO: `just build-iso`
+- `iso/disk.toml` - VM images (QCOW2/RAW): `./galena-build disk qcow2`
+- `iso/iso.toml` - Installer ISO: `./galena-build disk iso`
 
 **CRITICAL** - Update bootc switch URL in `iso/iso.toml`:
 
@@ -616,7 +629,7 @@ cp /ctx/oci/brew/*.sh /usr/local/bin/
 5. **NEVER** use `dnf5` in ujust files - only Brewfile/Flatpak shortcuts
 6. **ALWAYS** work on testing branch for development
 7. **ALWAYS** confirm with user before deviating from @ublue-os/bluefin patterns
-8. **ALWAYS** run shellcheck/YAML validation before committing
+8. **ALWAYS** run shellcheck/YAML/golangci-lint validation before committing
 9. **ALWAYS** update bootc switch URL in `iso/iso.toml` to match user's repo
 10. **ALWAYS** follow numbered script convention: `10-*.sh`, `20-*.sh`, `30-*.sh`
 11. **ALWAYS** check example scripts before creating new patterns (`.example` files in `build/`)
@@ -758,23 +771,24 @@ my-custom-command:
 
 ```bash
 # 1. Build container image
-just build
+./galena-build build
 
 # 2. Build QCOW2 disk image
-just build-qcow2
+./galena-build disk qcow2
 
 # 3. Run in VM
-just run-vm-qcow2
+./galena-build vm run
 
 # Or combine all steps
-just build && just build-qcow2 && just run-vm-qcow2
+./galena-build build && ./galena-build disk qcow2 && ./galena-build vm run
 ```
 
 **Alternative**: Build ISO for installation testing
 
 ```bash
-just build
-just build-iso
+./galena-build build
+./galena-build disk iso
+# Optional: use Justfile helper for ISO VM boot if preferred
 just run-vm-iso
 ```
 
@@ -856,7 +870,7 @@ See `build/copr-install-functions.sh` for reusable patterns:
 
 ### Local vs CI Builds
 
-**Local builds** (with `just build`):
+**Local builds** (with `./galena-build build`):
 
 - Uses your local podman
 - Faster for testing

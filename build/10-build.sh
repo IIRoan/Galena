@@ -33,7 +33,7 @@ mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
 echo "::group:: Install Galena CLI"
-echo "galena CLI is copied from the galena-cli-builder stage in Containerfile."
+echo "galena and galena-build CLIs are copied from the galena-cli-builder stage in Containerfile."
 echo "::endgroup::"
 
 # Consolidate Just Files
@@ -46,6 +46,12 @@ cp /ctx/custom/flatpaks/*.preinstall /etc/flatpak/preinstall.d/
 # Copy VS Code settings template
 mkdir -p /usr/share/galena
 install -m 0644 /ctx/custom/vscode/settings.json /usr/share/galena/vscode-settings.json
+
+# Copy devcontainer profile catalog/templates for galena dev workflows
+if [ -d /ctx/custom/devcontainer ]; then
+    mkdir -p /usr/share/galena/devcontainer
+    cp -r /ctx/custom/devcontainer/* /usr/share/galena/devcontainer/
+fi
 
 echo "::endgroup::"
 

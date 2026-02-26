@@ -20,7 +20,7 @@ env:
   IMAGE_NAME: "${{ github.event.repository.name }}"
   IMAGE_REGISTRY: "ghcr.io/${{ github.repository_owner }}"  # do not edit
   DEFAULT_TAG: "stable"
-  GO_VERSION: "1.23"
+  GO_VERSION: "1.24.2"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref || github.run_id }}-${{ inputs.brand_name}}-${{ inputs.stream_name }}
@@ -83,7 +83,7 @@ jobs:
             -X github.com/iiroan/galena/cmd/galena/cmd.Version=${{ github.sha }} \
             -X github.com/iiroan/galena/cmd/galena/cmd.Commit=${{ github.sha }} \
             -X github.com/iiroan/galena/cmd/galena/cmd.BuildDate=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            -o ${{ github.workspace }}/galena ./cmd/galena/
+            -o ${{ github.workspace }}/galena ./cmd/galena-build/
           chmod +x ${{ github.workspace }}/galena
           ${{ github.workspace }}/galena version
 

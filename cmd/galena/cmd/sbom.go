@@ -37,16 +37,16 @@ Defaults:
 
 Examples:
   # Generate SPDX SBOM
-  galena sbom ghcr.io/myorg/myimage:stable
+  galena-build sbom ghcr.io/myorg/myimage:stable
 
   # Generate CycloneDX SBOM
-  galena sbom ghcr.io/myorg/myimage:stable --format cyclonedx
+  galena-build sbom ghcr.io/myorg/myimage:stable --format cyclonedx
 
   # Generate SBOM for default image (galena:main)
-  galena sbom
+  galena-build sbom
 
   # Generate and attest SBOM to image
-  galena sbom ghcr.io/myorg/myimage:stable --attest`,
+  galena-build sbom ghcr.io/myorg/myimage:stable --attest`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runSBOM,
 }
@@ -221,7 +221,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 	if !exec.CheckCommand("podman") {
 		msg := "trivy not found and podman unavailable; cannot generate SBOM"
 		logger.Error(msg)
-		return fmt.Errorf(msg)
+		return fmt.Errorf("%s", msg)
 	}
 
 	logger.Info("trivy not found; using container fallback")

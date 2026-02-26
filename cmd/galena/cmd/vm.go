@@ -10,14 +10,14 @@ import (
 )
 
 var (
-	vmImage    string
-	vmMemory   string
-	vmCPUs     int
-	vmDisplay  string
-	vmSSHPort  int
-	vmNoKVM    bool
-	vmNoBIOS   bool
-	vmUseJust  bool
+	vmImage   string
+	vmMemory  string
+	vmCPUs    int
+	vmDisplay string
+	vmSSHPort int
+	vmNoKVM   bool
+	vmNoBIOS  bool
+	vmUseJust bool
 )
 
 var vmCmd = &cobra.Command{
@@ -31,16 +31,16 @@ Subcommands:
 
 Examples:
   # Run a VM with the most recent disk image
-  galena vm run
+  galena-build vm run
 
   # Run a VM with a specific image
-  galena vm run --image ./output/disk.qcow2
+  galena-build vm run --image ./output/disk.qcow2
 
   # Run with custom resources
-  galena vm run --memory 8G --cpus 4
+  galena-build vm run --memory 8G --cpus 4
 
   # Connect to VM via SSH
-  galena vm ssh`,
+  galena-build vm ssh`,
 }
 
 var vmRunCmd = &cobra.Command{
@@ -52,10 +52,10 @@ If no image is specified, it will look for the most recent disk image
 in the output directory.
 
 Examples:
-  galena vm run
-  galena vm run ./output/disk.qcow2
-  galena vm run --memory 8G --cpus 4
-  galena vm run --display vnc`,
+  galena-build vm run
+  galena-build vm run ./output/disk.qcow2
+  galena-build vm run --memory 8G --cpus 4
+  galena-build vm run --display vnc`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runVMRun,
 }
@@ -68,9 +68,9 @@ var vmSSHCmd = &cobra.Command{
 By default, connects to localhost on port 2222 with the user 'galena'.
 
 Examples:
-  galena vm ssh
-  galena vm ssh root
-  galena vm ssh --port 2223`,
+  galena-build vm ssh
+  galena-build vm ssh root
+  galena-build vm ssh --port 2223`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runVMSSH,
 }
@@ -121,7 +121,7 @@ func runVMRun(cmd *cobra.Command, args []string) error {
 		var err error
 		imagePath, err = vmRunner.FindDiskImage("")
 		if err != nil {
-			return fmt.Errorf("no disk image found: %w\nRun 'galena disk qcow2' first to create one", err)
+			return fmt.Errorf("no disk image found: %w\nRun 'galena-build disk qcow2' first to create one", err)
 		}
 		logger.Info("auto-detected disk image", "path", imagePath)
 	}

@@ -83,9 +83,12 @@ func Brewfiles(ctx context.Context, rootDir string) Result {
 			_, _ = tapsFile.WriteString("# No taps\n")
 		}
 		_ = tapsFile.Close()
-		defer os.Remove(tapsFile.Name())
+		tapsFilePath := tapsFile.Name()
+		defer func(path string) {
+			_ = os.Remove(path)
+		}(tapsFilePath)
 
-		tapsResult := exec.RunSimple(ctx, "brew", "bundle", "--file", tapsFile.Name())
+		tapsResult := exec.RunSimple(ctx, "brew", "bundle", "--file", tapsFilePath)
 		if tapsResult.Err != nil {
 			result.AddWarning("brewfile: " + relPath)
 			result.AddItem(StatusPending, relPath, "tap validation failed")

@@ -33,16 +33,16 @@ By default, removes:
 
 Examples:
   # Clean local images only
-  galena clean --images
+  galena-build clean --images
 
   # Clean output directory only
-  galena clean --output
+  galena-build clean --output
 
   # Clean everything
-  galena clean --all
+  galena-build clean --all
 
   # Skip confirmation
-  galena clean --all -y`,
+  galena-build clean --all -y`,
 	RunE: runClean,
 }
 
@@ -131,16 +131,22 @@ func runClean(cmd *cobra.Command, args []string) error {
 		manifestPath := filepath.Join(rootDir, "build-manifest.json")
 		if _, err := os.Stat(manifestPath); err == nil {
 			logger.Info("removing manifest", "path", manifestPath)
-			os.Remove(manifestPath)
-			cleaned = append(cleaned, manifestPath)
+			if err := os.Remove(manifestPath); err != nil {
+				logger.Warn("could not remove manifest", "error", err)
+			} else {
+				cleaned = append(cleaned, manifestPath)
+			}
 		}
 
 		// Clean SBOM
 		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
 		if _, err := os.Stat(sbomPath); err == nil {
 			logger.Info("removing SBOM", "path", sbomPath)
-			os.Remove(sbomPath)
-			cleaned = append(cleaned, sbomPath)
+			if err := os.Remove(sbomPath); err != nil {
+				logger.Warn("could not remove SBOM", "error", err)
+			} else {
+				cleaned = append(cleaned, sbomPath)
+			}
 		}
 	}
 

@@ -132,8 +132,8 @@ func DefaultConfig() *Config {
 		},
 		Dependencies: make(map[string]Dependency),
 		UI: UIConfig{
-			Theme:      "aurora",
-			ShowBanner: true,
+			Theme:      "space",
+			ShowBanner: false,
 			Dense:      false,
 			NoColor:    false,
 			Advanced:   false,

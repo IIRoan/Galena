@@ -77,16 +77,24 @@ sudoif command *args:
 # The script constructs the version string using the tag and the current date.
 # If the git working directory is clean, it also includes the short SHA of the current HEAD.
 #
-# just build $target_image $tag
+# just build-image $target_image $tag
 #
 # Example usage:
-#   just build aurora lts
+#   just build-image aurora lts
 #
 # This will build an image 'aurora:lts' with DX and GDX enabled.
 #
 
-# Build the image using the specified parameters
-build $target_image=image_name $tag=default_tag:
+# Build both local CLIs (galena and galena-build)
+build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    go build -o ./galena ./cmd/galena
+    go build -o ./galena-build ./cmd/galena-build
+
+# Build the container image using the specified parameters
+build-image $target_image=image_name $tag=default_tag:
     #!/usr/bin/env bash
 
     BUILD_ARGS=()
@@ -195,7 +203,7 @@ _build-bib $target_image $tag $type $config: (_rootful_load_image target_image t
 #   config: The configuration file to use for the build (deafult: iso/disk.toml)
 
 # Example: just _rebuild-bib localhost/fedora latest qcow2 iso/disk.toml
-_rebuild-bib $target_image $tag $type $config: (build target_image tag) && (_build-bib target_image tag type config)
+_rebuild-bib $target_image $tag $type $config: (build-image target_image tag) && (_build-bib target_image tag type config)
 
 # Build a QCOW2 virtual machine image
 [group('Build Virtal Machine Image')]

@@ -104,7 +104,7 @@ func rebuildStyles() {
 	Title = lipgloss.NewStyle().
 		Bold(true).
 		Foreground(Secondary).
-		BorderStyle(lipgloss.NormalBorder()).
+		BorderStyle(lipgloss.RoundedBorder()).
 		BorderLeft(true).
 		BorderForeground(Border).
 		PaddingLeft(1).
@@ -126,13 +126,13 @@ func rebuildStyles() {
 		Padding(0, 1)
 
 	HeaderStyle = lipgloss.NewStyle().
-		Foreground(Background).
-		Background(Secondary).
+		Foreground(Foreground).
+		Background(Border).
 		Bold(true).
 		Padding(0, 1)
 
 	HeaderFill = lipgloss.NewStyle().
-		Background(Secondary)
+		Background(Border)
 
 	SuccessStyle = lipgloss.NewStyle().
 		Foreground(Success).
@@ -266,7 +266,7 @@ func Banner() string {
 
 func Header(title string) string {
 	width := contentWidth()
-	brand := BrandStyle.Render(" galena ")
+	brand := BrandStyle.Render(" ✦ GALENA ")
 	section := HeaderStyle.Render(" " + strings.ToUpper(title) + " ")
 	line := lipgloss.JoinHorizontal(lipgloss.Top, brand, section)
 	lineWidth := lipgloss.Width(line)
@@ -277,11 +277,7 @@ func Header(title string) string {
 }
 
 func contentWidth() int {
-	width := terminalWidth()
-	if width > 100 {
-		return 100
-	}
-	return width
+	return terminalWidth()
 }
 
 func terminalWidth() int {
