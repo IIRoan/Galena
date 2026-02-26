@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
 
 	galexec "github.com/iiroan/galena/internal/exec"
@@ -73,14 +74,23 @@ func runApps(cmd *cobra.Command, args []string) error {
 			}
 		case "install-brew":
 			if err := runCatalogInstallFlow([]catalogKind{catalogKindBrew}); err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					continue
+				}
 				return err
 			}
 		case "install-flatpak":
 			if err := runCatalogInstallFlow([]catalogKind{catalogKindFlatpak}); err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					continue
+				}
 				return err
 			}
 		case "install-all":
 			if err := runCatalogInstallFlow([]catalogKind{catalogKindBrew, catalogKindFlatpak}); err != nil {
+				if errors.Is(err, huh.ErrUserAborted) {
+					continue
+				}
 				return err
 			}
 		default:
@@ -119,11 +129,23 @@ func appsFallbackMenu() error {
 	case "status":
 		return showCatalogStatus([]catalogKind{catalogKindBrew, catalogKindFlatpak})
 	case "install-brew":
-		return runCatalogInstallFlow([]catalogKind{catalogKindBrew})
+		err := runCatalogInstallFlow([]catalogKind{catalogKindBrew})
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
 	case "install-flatpak":
-		return runCatalogInstallFlow([]catalogKind{catalogKindFlatpak})
+		err := runCatalogInstallFlow([]catalogKind{catalogKindFlatpak})
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
 	case "install-all":
-		return runCatalogInstallFlow([]catalogKind{catalogKindBrew, catalogKindFlatpak})
+		err := runCatalogInstallFlow([]catalogKind{catalogKindBrew, catalogKindFlatpak})
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
 	default:
 		return nil
 	}
@@ -141,7 +163,11 @@ func runAppsInstall(cmd *cobra.Command, args []string) error {
 			kinds = append(kinds, catalogKindFlatpak)
 		}
 	}
-	return runCatalogInstallFlow(kinds)
+	err := runCatalogInstallFlow(kinds)
+	if errors.Is(err, huh.ErrUserAborted) {
+		return nil
+	}
+	return err
 }
 
 func runCatalogInstallFlow(kinds []catalogKind) error {
@@ -158,32 +184,32 @@ func runCatalogInstallFlow(kinds []catalogKind) error {
 		return nil
 	}
 
-	options := make([]huh.Option[string], 0, len(items))
-	selectedKeys := make([]string, 0, len(items))
+	orderedItems := sortCatalogItemsForSelection(items)
+	options := make([]huh.Option[string], 0, len(orderedItems))
+	selectedKeys := make([]string, 0, len(orderedItems))
 	index := map[string]catalogItem{}
 
-	for _, item := range items {
+	for _, item := range orderedItems {
 		key := string(item.Kind) + "::" + item.Name
-		status := "missing"
-		if item.Installed {
-			status = "installed"
-		}
-		label := fmt.Sprintf("[%s] %s (%s)", strings.ToUpper(string(item.Kind)), item.Name, status)
-		options = append(options, huh.NewOption(label, key).Selected(!item.Installed))
+		label := renderCatalogOptionLabel(item)
+		options = append(options, huh.NewOption(label, key))
 		index[key] = item
 	}
 
 	if err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewMultiSelect[string]().
-				Title("Select packages to install").
-				Description("Installed items are listed for visibility and are unselected by default.").
+				Title("Select package changes").
+				Description("Missing items can be installed. Installed items are crossed out and can be selected to uninstall. Press q to go back.").
 				Options(options...).
 				Value(&selectedKeys).
 				Height(16).
 				Filterable(true),
 		),
-	).WithTheme(ui.HuhTheme()).Run(); err != nil {
+	).
+		WithTheme(ui.HuhTheme()).
+		WithKeyMap(newHuhBackOnQKeyMap()).
+		Run(); err != nil {
 		return err
 	}
 
@@ -213,31 +239,37 @@ func runCatalogInstallFlow(kinds []catalogKind) error {
 func installCatalogItems(items []catalogItem) error {
 	ctx := context.Background()
 	installed := 0
-	skipped := 0
+	uninstalled := 0
 	failed := []string{}
 
 	for _, item := range items {
+		actionVerb := "Installing"
+		actionName := "install"
 		if item.Installed {
-			skipped++
-			continue
+			actionVerb = "Uninstalling"
+			actionName = "uninstall"
 		}
 
-		message := fmt.Sprintf("Installing %s (%s)", item.Name, item.Kind)
+		message := fmt.Sprintf("%s %s (%s)", actionVerb, item.Name, item.Kind)
 		err := ui.RunWithSpinner(message, func() error {
-			return installCatalogItem(ctx, item)
+			return applyCatalogItemChange(ctx, item)
 		})
 		if err != nil {
-			failed = append(failed, fmt.Sprintf("%s: %v", item.Name, err))
+			failed = append(failed, fmt.Sprintf("%s (%s): %v", item.Name, actionName, err))
 			continue
 		}
-		installed++
+		if item.Installed {
+			uninstalled++
+		} else {
+			installed++
+		}
 	}
 
 	fmt.Println()
-	fmt.Println("Installation Summary")
-	fmt.Printf("Installed: %d\n", installed)
-	fmt.Printf("Skipped:   %d (already present)\n", skipped)
-	fmt.Printf("Failed:    %d\n", len(failed))
+	fmt.Println("Package Change Summary")
+	fmt.Printf("Installed:   %d\n", installed)
+	fmt.Printf("Uninstalled: %d\n", uninstalled)
+	fmt.Printf("Failed:      %d\n", len(failed))
 
 	if len(failed) > 0 {
 		fmt.Println()
@@ -245,12 +277,19 @@ func installCatalogItems(items []catalogItem) error {
 		for _, entry := range failed {
 			fmt.Printf("  - %s\n", entry)
 		}
-		return fmt.Errorf("one or more installs failed")
+		return fmt.Errorf("one or more package changes failed")
 	}
 
 	fmt.Println()
-	fmt.Println(ui.SuccessBox.Render("Selected catalog items installed successfully."))
+	fmt.Println(ui.SuccessBox.Render("Selected package changes applied successfully."))
 	return nil
+}
+
+func applyCatalogItemChange(ctx context.Context, item catalogItem) error {
+	if item.Installed {
+		return uninstallCatalogItem(ctx, item)
+	}
+	return installCatalogItem(ctx, item)
 }
 
 func installCatalogItem(ctx context.Context, item catalogItem) error {
@@ -292,6 +331,62 @@ func installCatalogItem(ctx context.Context, item catalogItem) error {
 	}
 
 	return nil
+}
+
+func uninstallCatalogItem(ctx context.Context, item catalogItem) error {
+	switch item.Kind {
+	case catalogKindBrew:
+		if err := galexec.RequireCommands("brew"); err != nil {
+			return err
+		}
+		result := galexec.Run(ctx, "brew", []string{"uninstall", item.Name}, galexec.DefaultOptions())
+		if result.Err != nil {
+			return fmt.Errorf("%w\n%s", result.Err, galexec.LastNLines(result.Stderr, 10))
+		}
+	case catalogKindFlatpak:
+		if err := galexec.RequireCommands("flatpak"); err != nil {
+			return err
+		}
+		result := galexec.Run(ctx, "flatpak", []string{
+			"uninstall", "-y", "--system", item.Name,
+		}, galexec.DefaultOptions())
+		if result.Err != nil {
+			// Fallback to user scope if system scope is unavailable.
+			result = galexec.Run(ctx, "flatpak", []string{
+				"uninstall", "-y", item.Name,
+			}, galexec.DefaultOptions())
+		}
+		if result.Err != nil {
+			return fmt.Errorf("%w\n%s", result.Err, galexec.LastNLines(result.Stderr, 10))
+		}
+	default:
+		return fmt.Errorf("unsupported catalog type: %s", item.Kind)
+	}
+
+	return nil
+}
+
+func sortCatalogItemsForSelection(items []catalogItem) []catalogItem {
+	sorted := append([]catalogItem(nil), items...)
+	sort.Slice(sorted, func(i, j int) bool {
+		if sorted[i].Installed != sorted[j].Installed {
+			return !sorted[i].Installed && sorted[j].Installed
+		}
+		if sorted[i].Kind != sorted[j].Kind {
+			return sorted[i].Kind < sorted[j].Kind
+		}
+		return sorted[i].Name < sorted[j].Name
+	})
+	return sorted
+}
+
+func renderCatalogOptionLabel(item catalogItem) string {
+	kind := strings.ToUpper(string(item.Kind))
+	if item.Installed {
+		name := lipgloss.NewStyle().Strikethrough(true).Foreground(ui.Muted).Render(item.Name)
+		return fmt.Sprintf("[%s] %s (installed - select to uninstall)", kind, name)
+	}
+	return fmt.Sprintf("[%s] %s (missing - select to install)", kind, item.Name)
 }
 
 func showCatalogStatus(kinds []catalogKind) error {

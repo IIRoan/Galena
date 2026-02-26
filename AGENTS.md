@@ -23,6 +23,8 @@
 ```
 ├── Containerfile          # Main build definition (multi-stage build with OCI imports)
 ├── Justfile              # Local build automation (image name, build commands)
+├── cmd/galena/           # Runtime management CLI (ships on Galena OS images)
+├── cmd/galena-build/     # Builder CLI for image development and CI workflows
 ├── build/                # Build-time scripts (10-build.sh, 20-chrome.sh, etc.)
 │   ├── 10-build.sh      # Main build script (copy custom files, install packages)
 │   ├── 20-*.sh.example  # Example third-party repos (rename to use)
@@ -65,15 +67,25 @@
 
 ## Core Principles
 
-### Custom Go CLI (`./galena`)
+### Custom Go CLIs (`./galena` and `./galena-build`)
 
-The project uses a custom Go-based CLI for core operations. ALWAYS prefer using the CLI over manual podman or just commands when possible.
+The project intentionally splits CLI responsibilities. ALWAYS prefer the correct CLI over manual podman or just commands when possible.
 
-- **Build**: `./galena build` (Interactive or flags like `--push`)
-- **Disk Images**: `./galena disk <type>` (iso, qcow2, raw, etc.)
-- **Validation**: `./galena validate` (Runs all checks: shellcheck, brew, flatpak, just, etc.)
-- **VM Testing**: `./galena vm run`
-- **SBOM**: `./galena sbom <image>`
+**Runtime Device Management (`./galena`)** - For Galena OS systems (on-device management):
+
+- **Applications**: `./galena apps`
+- **Status**: `./galena status`
+- **Updates**: `./galena update`
+- **Bluefin Tasks**: `./galena ujust`
+- **First Boot Setup**: `./galena setup`
+
+**Image Build & Development (`./galena-build`)** - For image creation, local testing, and CI:
+
+- **Build**: `./galena-build build` (Interactive or flags like `--push`)
+- **Disk Images**: `./galena-build disk <type>` (iso, qcow2, raw, etc.)
+- **Validation**: `./galena-build validate` (Runs all checks: shellcheck, brew, flatpak, just, etc.)
+- **VM Testing**: `./galena-build vm run`
+- **SBOM**: `./galena-build sbom <image>`
 
 ### Multi-Stage Build Architecture
 
@@ -266,7 +278,7 @@ Branch=stable
 | Replace desktop          | Use example script                                    | `build/30-cosmic-desktop.sh.example`    |
 | Switch base image        | Update FROM line                                      | `Containerfile` line 38                 |
 | Add OCI containers       | Uncomment COPY --from= lines                          | `Containerfile` lines 13-18 (ctx stage) |
-| Test locally             | `just build && just build-qcow2 && just run-vm-qcow2` | Terminal                                |
+| Test locally             | `./galena-build build && ./galena-build disk qcow2 && ./galena-build vm run` | Terminal                                |
 | Deploy (production)      | `sudo bootc switch ghcr.io/user/repo:stable`          | Terminal                                |
 | Enable service           | `systemctl enable service.name`                       | `build/10-build.sh`                     |
 | Add COPR                 | enable → install → **DISABLE**                        | `build/10-build.sh`                     |
@@ -497,8 +509,8 @@ Branch=stable
 
 **Files**:
 
-- `iso/disk.toml` - VM images (QCOW2/RAW): `just build-qcow2`
-- `iso/iso.toml` - Installer ISO: `just build-iso`
+- `iso/disk.toml` - VM images (QCOW2/RAW): `./galena-build disk qcow2`
+- `iso/iso.toml` - Installer ISO: `./galena-build disk iso`
 
 **CRITICAL** - Update bootc switch URL in `iso/iso.toml`:
 
@@ -759,23 +771,24 @@ my-custom-command:
 
 ```bash
 # 1. Build container image
-just build
+./galena-build build
 
 # 2. Build QCOW2 disk image
-just build-qcow2
+./galena-build disk qcow2
 
 # 3. Run in VM
-just run-vm-qcow2
+./galena-build vm run
 
 # Or combine all steps
-just build && just build-qcow2 && just run-vm-qcow2
+./galena-build build && ./galena-build disk qcow2 && ./galena-build vm run
 ```
 
 **Alternative**: Build ISO for installation testing
 
 ```bash
-just build
-just build-iso
+./galena-build build
+./galena-build disk iso
+# Optional: use Justfile helper for ISO VM boot if preferred
 just run-vm-iso
 ```
 
@@ -857,7 +870,7 @@ See `build/copr-install-functions.sh` for reusable patterns:
 
 ### Local vs CI Builds
 
-**Local builds** (with `just build`):
+**Local builds** (with `./galena-build build`):
 
 - Uses your local podman
 - Faster for testing

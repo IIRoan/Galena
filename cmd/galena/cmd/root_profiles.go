@@ -52,7 +52,5 @@ func addManagementCommands() {
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(ujustCmd)
 	rootCmd.AddCommand(setupCmd)
-	rootCmd.AddCommand(manageBuildToolsCmd)
 	rootCmd.AddCommand(versionCmd)
-	rootCmd.AddCommand(settingsCmd)
 }

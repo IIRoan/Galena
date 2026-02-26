@@ -231,9 +231,13 @@ func parseUJustRecipes(path string) ([]ujustRecipe, error) {
 	nextPrivate := false
 
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
+		rawLine := scanner.Text()
+		line := strings.TrimSpace(rawLine)
 		if line == "" {
 			pendingDescription = ""
+			continue
+		}
+		if !isTopLevelJustLine(rawLine) {
 			continue
 		}
 		if strings.HasPrefix(line, "#") {
@@ -258,13 +262,18 @@ func parseUJustRecipes(path string) ([]ujustRecipe, error) {
 			pendingDescription = ""
 			continue
 		}
-		if strings.Contains(line, ":") {
-			recipeDef := strings.TrimSpace(strings.SplitN(line, ":", 2)[0])
+		colonIdx := strings.Index(line, ":")
+		if colonIdx > 0 {
+			recipeDef := strings.TrimSpace(line[:colonIdx])
 			fields := strings.Fields(recipeDef)
 			if len(fields) == 0 {
 				continue
 			}
 			name := fields[0]
+			if !isValidUJustRecipeName(name) {
+				pendingDescription = ""
+				continue
+			}
 			if nextPrivate || strings.HasPrefix(name, "_") {
 				nextPrivate = false
 				pendingDescription = ""
@@ -297,4 +306,26 @@ func parseJustGroup(line string) string {
 		return ""
 	}
 	return line[start+1 : start+1+end]
+}
+
+func isTopLevelJustLine(raw string) bool {
+	return strings.TrimLeft(raw, " \t") == raw
+}
+
+func isValidUJustRecipeName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i, r := range name {
+		if i == 0 {
+			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+				return false
+			}
+			continue
+		}
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+			return false
+		}
+	}
+	return true
 }

@@ -131,19 +131,22 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 	if len(brewPackages) > 0 {
 		options := make([]huh.Option[string], 0, len(brewPackages))
 		for _, pkg := range brewPackages {
-			options = append(options, huh.NewOption(pkg, pkg).Selected(true))
+			options = append(options, huh.NewOption(pkg, pkg))
 		}
 		if err := huh.NewForm(
 			huh.NewGroup(
 				huh.NewMultiSelect[string]().
 					Title("SELECT CLI TOOLS").
-					Description("Choose command-line utilities to be managed via Homebrew.").
+					Description("Choose command-line utilities to be managed via Homebrew. Press q to go back.").
 					Options(options...).
 					Value(&selectedBrew).
 					Height(12).
 					Filterable(true),
 			),
-		).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		).
+			WithTheme(ui.HuhTheme()).
+			WithKeyMap(newHuhBackOnQKeyMap()).
+			Run(); err != nil {
 			return nil, nil, false, err
 		}
 	}
@@ -152,19 +155,22 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 	if len(flatpakApps) > 0 {
 		options := make([]huh.Option[string], 0, len(flatpakApps))
 		for _, app := range flatpakApps {
-			options = append(options, huh.NewOption(app, app).Selected(true))
+			options = append(options, huh.NewOption(app, app))
 		}
 		if err := huh.NewForm(
 			huh.NewGroup(
 				huh.NewMultiSelect[string]().
 					Title("SELECT APPLICATIONS").
-					Description("Choose desktop applications to be installed via Flatpak.").
+					Description("Choose desktop applications to be installed via Flatpak. Press q to go back.").
 					Options(options...).
 					Value(&selectedFlatpaks).
 					Height(12).
 					Filterable(true),
 			),
-		).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		).
+			WithTheme(ui.HuhTheme()).
+			WithKeyMap(newHuhBackOnQKeyMap()).
+			Run(); err != nil {
 			return nil, nil, false, err
 		}
 	}

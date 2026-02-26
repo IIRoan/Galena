@@ -235,17 +235,40 @@ func listInstalledFlatpakApps(ctx context.Context) map[string]struct{} {
 		return installed
 	}
 
-	result := galexec.RunSimple(ctx, "flatpak", "list", "--app", "--columns=application")
-	if result.Err != nil {
-		return installed
+	parse := func(stdout string) {
+		for _, raw := range strings.Split(stdout, "\n") {
+			name := strings.TrimSpace(raw)
+			if name == "" {
+				continue
+			}
+			installed[name] = struct{}{}
+		}
 	}
-	for _, raw := range strings.Split(result.Stdout, "\n") {
-		name := strings.TrimSpace(raw)
-		if name == "" {
+
+	// Catalogs can include apps and extensions/runtimes (e.g. GTK themes).
+	// Gather both user and system installation scopes without filtering to --app.
+	queries := [][]string{
+		{"list", "--columns=application", "--system"},
+		{"list", "--columns=application", "--user"},
+	}
+	parsedAny := false
+	for _, query := range queries {
+		result := galexec.RunSimple(ctx, "flatpak", query...)
+		if result.Err != nil {
 			continue
 		}
-		installed[name] = struct{}{}
+		parse(result.Stdout)
+		parsedAny = true
 	}
+
+	// Fallback for environments that don't support explicit scope flags.
+	if !parsedAny {
+		result := galexec.RunSimple(ctx, "flatpak", "list", "--columns=application")
+		if result.Err == nil {
+			parse(result.Stdout)
+		}
+	}
+
 	return installed
 }
 

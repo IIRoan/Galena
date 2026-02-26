@@ -15,13 +15,17 @@ func runManagementTUI() error {
 		{ID: "update", TitleText: "System Update", Details: "Run bootc upgrade and optionally reboot"},
 		{ID: "ujust", TitleText: "Bluefin Tasks", Details: "Browse and run ujust workflows from the shipped recipes"},
 		{ID: "setup", TitleText: "Setup Wizard", Details: "Run the first-boot setup wizard manually"},
-		{ID: "build-tools", TitleText: "Build Tools", Details: "Launch galena-build for image development workflows"},
-		{ID: "settings", TitleText: "Settings", Details: "Tune layout and behavior"},
 		{ID: "exit", TitleText: "Exit", Details: "Close the management console"},
 	}
+	lastChoice := ""
 
 	for {
-		choice, err := ui.RunMenu("GALENA MANAGEMENT", "Choose a device management action.", menuItems)
+		choice, err := ui.RunMenuWithOptions(
+			"GALENA MANAGEMENT",
+			"Select what you want to manage on this device.",
+			menuItems,
+			ui.WithInitialSelectionID(lastChoice),
+		)
 		if err != nil {
 			return runManagementFallback()
 		}
@@ -29,6 +33,7 @@ func runManagementTUI() error {
 		if choice == ui.MenuActionQuit || choice == "exit" || choice == "" {
 			return nil
 		}
+		lastChoice = choice
 
 		if err := runManagementChoice(choice); err != nil {
 			if errors.Is(err, huh.ErrUserAborted) {
@@ -44,7 +49,7 @@ func runManagementTUI() error {
 }
 
 func runManagementFallback() error {
-	ui.StartScreen("MANAGEMENT MENU", "Choose a device management action.")
+	ui.StartScreen("MANAGEMENT MENU", "Select what you want to manage on this device.")
 	var fallbackChoice string
 	fallbackErr := huh.NewSelect[string]().
 		Title("Galena Management").
@@ -55,8 +60,6 @@ func runManagementFallback() error {
 			huh.NewOption("System Update", "update"),
 			huh.NewOption("Bluefin Tasks", "ujust"),
 			huh.NewOption("Setup Wizard", "setup"),
-			huh.NewOption("Build Tools", "build-tools"),
-			huh.NewOption("Settings", "settings"),
 			huh.NewOption("Exit", "exit"),
 		).
 		Value(&fallbackChoice).
@@ -83,10 +86,6 @@ func runManagementChoice(choice string) error {
 		return ujustCmd.RunE(ujustCmd, []string{})
 	case "setup":
 		return setupCmd.RunE(setupCmd, []string{})
-	case "build-tools":
-		return manageBuildToolsCmd.RunE(manageBuildToolsCmd, []string{})
-	case "settings":
-		return settingsCmd.RunE(settingsCmd, []string{})
 	case "exit", ui.MenuActionQuit, ui.MenuActionBack, "":
 		return nil
 	default:
