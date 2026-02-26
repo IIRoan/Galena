@@ -181,13 +181,14 @@ func runCatalogInstallFlow(kinds []catalogKind) error {
 	}
 
 	orderedItems := sortCatalogItemsForSelection(items)
+	containerPreferred := containerPreferredBrewSet()
 	options := make([]huh.Option[string], 0, len(orderedItems))
 	selectedKeys := make([]string, 0, len(orderedItems))
 	index := map[string]catalogItem{}
 
 	for _, item := range orderedItems {
 		key := string(item.Kind) + "::" + item.Name
-		label := renderCatalogOptionLabel(item)
+		label := renderCatalogOptionLabel(item, containerPreferred)
 		options = append(options, huh.NewOption(label, key))
 		index[key] = item
 	}
@@ -376,13 +377,19 @@ func sortCatalogItemsForSelection(items []catalogItem) []catalogItem {
 	return sorted
 }
 
-func renderCatalogOptionLabel(item catalogItem) string {
+func renderCatalogOptionLabel(item catalogItem, containerPreferred map[string]struct{}) string {
 	kind := strings.ToUpper(string(item.Kind))
+	note := ""
+	if item.Kind == catalogKindBrew {
+		if _, ok := containerPreferred[item.Name]; ok {
+			note = " (container-preferred)"
+		}
+	}
 	if item.Installed {
 		name := lipgloss.NewStyle().Strikethrough(true).Foreground(ui.Muted).Render(item.Name)
-		return fmt.Sprintf("[%s] %s (installed - select to uninstall)", kind, name)
+		return fmt.Sprintf("[%s] %s (installed - select to uninstall)%s", kind, name, note)
 	}
-	return fmt.Sprintf("[%s] %s (missing - select to install)", kind, item.Name)
+	return fmt.Sprintf("[%s] %s (missing - select to install)%s", kind, item.Name, note)
 }
 
 func showCatalogStatus(kinds []catalogKind) error {
@@ -390,6 +397,7 @@ func showCatalogStatus(kinds []catalogKind) error {
 	if err != nil {
 		return err
 	}
+	containerPreferred := containerPreferredBrewSet()
 
 	brewAvailable := galexec.CheckCommand("brew")
 	flatpakAvailable := galexec.CheckCommand("flatpak")
@@ -431,7 +439,13 @@ func showCatalogStatus(kinds []catalogKind) error {
 			if entry.Installed {
 				state = ui.StatusSuccess.String()
 			}
-			fmt.Printf("  %s %-36s %s\n", state, entry.Name, ui.MutedStyle.Render("["+strings.Join(entry.Sources, ", ")+"]"))
+			annotation := ""
+			if entry.Kind == catalogKindBrew {
+				if _, ok := containerPreferred[entry.Name]; ok {
+					annotation = " " + ui.MutedStyle.Render("(container-preferred)")
+				}
+			}
+			fmt.Printf("  %s %-36s %s%s\n", state, entry.Name, ui.MutedStyle.Render("["+strings.Join(entry.Sources, ", ")+"]"), annotation)
 		}
 	}
 

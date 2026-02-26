@@ -48,6 +48,7 @@ func addBuildCommands() {
 
 func addManagementCommands() {
 	rootCmd.AddCommand(appsCmd)
+	rootCmd.AddCommand(devCmd)
 	rootCmd.AddCommand(manageStatusCmd)
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(ujustCmd)

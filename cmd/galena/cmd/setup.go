@@ -43,10 +43,19 @@ type taskFinishedMsg struct {
 
 type allFinishedMsg struct{}
 
+type setupDevMode string
+
+const (
+	setupDevModeHostOnly         setupDevMode = "host-only"
+	setupDevModeDevcontainerOnly setupDevMode = "devcontainer-first"
+)
+
 type deploymentModel struct {
 	selectedBrew     []string
 	selectedFlatpaks []string
 	disableSetup     bool
+	devMode          setupDevMode
+	devBootstrapErr  string
 
 	width      int
 	height     int
@@ -84,7 +93,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		flatpakApps, _ = getFlatpakApps("custom/flatpaks/default.preinstall")
 	}
 
-	selectedBrew, selectedFlatpaks, disableSetup, err := promptSetupSelections(brewPackages, flatpakApps)
+	selectedBrew, selectedFlatpaks, disableSetup, devMode, err := promptSetupSelections(brewPackages, flatpakApps)
 	if err != nil {
 		if errors.Is(err, huh.ErrUserAborted) {
 			return nil
@@ -100,6 +109,7 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		selectedBrew:     selectedBrew,
 		selectedFlatpaks: selectedFlatpaks,
 		disableSetup:     disableSetup,
+		devMode:          devMode,
 		spinner:          s,
 	}
 
@@ -109,12 +119,20 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	if fm, ok := finalModel.(*deploymentModel); ok && fm.finished {
+		if fm.devMode == setupDevModeDevcontainerOnly {
+			err := ui.RunWithSpinner("Bootstrapping devcontainer workspace", func() error {
+				return bootstrapSetupDevcontainer(defaultDevProfileID)
+			})
+			if err != nil {
+				fm.devBootstrapErr = err.Error()
+			}
+		}
 		printSetupSummary(fm)
 	}
 	return nil
 }
 
-func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]string, []string, bool, error) {
+func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]string, []string, bool, setupDevMode, error) {
 	if err := huh.NewForm(
 		huh.NewGroup(
 			huh.NewNote().
@@ -124,7 +142,7 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 					"Choose exactly what to install before deployment."),
 		),
 	).WithTheme(ui.HuhTheme()).Run(); err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, setupDevModeHostOnly, err
 	}
 
 	selectedBrew := make([]string, 0, len(brewPackages))
@@ -147,7 +165,7 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 			WithTheme(ui.HuhTheme()).
 			WithKeyMap(newHuhBackOnQKeyMap()).
 			Run(); err != nil {
-			return nil, nil, false, err
+			return nil, nil, false, setupDevModeHostOnly, err
 		}
 	}
 
@@ -171,8 +189,24 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 			WithTheme(ui.HuhTheme()).
 			WithKeyMap(newHuhBackOnQKeyMap()).
 			Run(); err != nil {
-			return nil, nil, false, err
+			return nil, nil, false, setupDevModeHostOnly, err
 		}
+	}
+
+	devMode := setupDevModeDevcontainerOnly
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[setupDevMode]().
+				Title("DEVELOPMENT MODE").
+				Description("Choose where development toolchains should live.").
+				Options(
+					huh.NewOption("Devcontainer-first", setupDevModeDevcontainerOnly),
+					huh.NewOption("Host-only", setupDevModeHostOnly),
+				).
+				Value(&devMode),
+		),
+	).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		return nil, nil, false, setupDevModeHostOnly, err
 	}
 
 	disableSetup := true
@@ -180,9 +214,10 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("READY TO DEPLOY?").
-				Description(fmt.Sprintf("\n%s\n%s\n\nPersist setup completion?\n%s",
+				Description(fmt.Sprintf("\n%s\n%s\n%s\n\nPersist setup completion?\n%s",
 					ui.AccentStyle().Render(fmt.Sprintf(" • %d CLI tools", len(selectedBrew))),
 					ui.AccentStyle().Render(fmt.Sprintf(" • %d GUI apps", len(selectedFlatpaks))),
+					ui.AccentStyle().Render(fmt.Sprintf(" • Development mode: %s", devMode)),
 					ui.MutedStyle.Render("If yes, this wizard will not show again on next boot."),
 				)).
 				Value(&disableSetup).
@@ -190,10 +225,10 @@ func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]strin
 				Negative("Keep showing"),
 		),
 	).WithTheme(ui.HuhTheme()).Run(); err != nil {
-		return nil, nil, false, err
+		return nil, nil, false, setupDevModeHostOnly, err
 	}
 
-	return selectedBrew, selectedFlatpaks, disableSetup, nil
+	return selectedBrew, selectedFlatpaks, disableSetup, devMode, nil
 }
 
 func (m *deploymentModel) Init() tea.Cmd {
@@ -292,8 +327,9 @@ func (m *deploymentModel) nextTask() tea.Cmd {
 
 func (m *deploymentModel) finalize() tea.Cmd {
 	return func() tea.Msg {
+		_ = os.MkdirAll("/var/lib/galena", 0o755)
+		_ = os.WriteFile("/var/lib/galena/dev-mode", []byte(string(m.devMode)+"\n"), 0o644)
 		if m.disableSetup {
-			_ = os.MkdirAll("/var/lib/galena", 0o755)
 			_ = os.WriteFile("/var/lib/galena/setup.done", []byte("done"), 0o644)
 		}
 		return allFinishedMsg{}
@@ -344,6 +380,8 @@ func (m *deploymentModel) View() tea.View {
 	sb.WriteString(ui.PanelTitle.Render("DEPLOYMENT") + "\n\n")
 	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("CLI tools: %d", len(m.selectedBrew))) + "\n")
 	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("GUI apps:  %d", len(m.selectedFlatpaks))) + "\n\n")
+	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("Dev mode:  %s", m.devMode)) + "\n")
+	sb.WriteString("\n")
 	sb.WriteString(ui.AccentStyle().Render(fmt.Sprintf("Progress: %d/%d", m.completedTasks, m.totalTasks)) + "\n\n")
 	if m.keyboardReportEvents {
 		sb.WriteString(ui.SuccessStyle.Render("Keyboard enhancements: active") + "\n")
@@ -442,10 +480,14 @@ func printSetupSummary(m *deploymentModel) {
 	}
 
 	fmt.Println()
+	fmt.Printf("Development mode: %s\n", m.devMode)
 	if m.disableSetup {
 		fmt.Println("Setup persistence: enabled (won't show next boot).")
 	} else {
 		fmt.Println("Setup persistence: disabled (will show on next boot).")
+	}
+	if strings.TrimSpace(m.devBootstrapErr) != "" {
+		fmt.Println(ui.WarningStyle.Render("Devcontainer bootstrap warning: " + m.devBootstrapErr))
 	}
 	fmt.Println("Your system is ready.")
 }

@@ -1,0 +1,74 @@
+profiles:
+  - id: app-dev-core
+    title: App Dev Core
+    description: General application development with modern language toolchains and security tooling.
+    template: app-dev-core.json
+    brew_packages:
+      - lazygit
+      - git-delta
+      - entr
+      - watchexec
+      - hyperfine
+      - dust
+      - duf
+      - bottom
+      - ncdu
+      - yazi
+      - zellij
+      - mise
+      - uv
+      - deno
+      - docker-compose
+      - sops
+      - age
+      - gitleaks
+      - cosign
+      - grype
+      - procs
+      - ripgrep-all
+    flatpak_apps: []
+  - id: go-dev
+    title: Go Development
+    description: Lean Go workspace with linting, formatting, and testing tools.
+    template: go-dev.json
+    brew_packages:
+      - golangci-lint
+      - protobuf
+      - just
+      - watchexec
+    flatpak_apps: []
+  - id: node-dev
+    title: Node Development
+    description: Node.js and package-manager centric workflow for frontend and backend projects.
+    template: node-dev.json
+    brew_packages:
+      - node
+      - pnpm
+      - bun
+      - watchexec
+    flatpak_apps: []
+  - id: python-dev
+    title: Python Development
+    description: Python-focused workflow with uv and formatting/linting defaults.
+    template: python-dev.json
+    brew_packages:
+      - python@3.13
+      - uv
+      - watchexec
+    flatpak_apps: []
+  - id: fullstack
+    title: Fullstack + Cloud
+    description: Broader dev profile with language, container, and cloud-native tooling.
+    template: fullstack.json
+    brew_packages:
+      - kubectl
+      - helm
+      - k9s
+      - kind
+      - terraform
+      - oras
+      - crane
+      - sops
+      - cosign
+      - gitleaks
+    flatpak_apps: []

@@ -11,6 +11,7 @@ import (
 func runManagementTUI() error {
 	menuItems := []ui.MenuItem{
 		{ID: "apps", TitleText: "Applications", Details: "Manage Homebrew and Flatpak installs from the Galena catalog"},
+		{ID: "dev", TitleText: "Development Environment", Details: "Devcontainer-first setup, status, and lifecycle management"},
 		{ID: "status", TitleText: "Device Status", Details: "Inspect setup markers, tool availability, and catalog coverage"},
 		{ID: "update", TitleText: "System Update", Details: "Run bootc upgrade and optionally reboot"},
 		{ID: "ujust", TitleText: "Bluefin Tasks", Details: "Browse and run ujust workflows from the shipped recipes"},
@@ -52,6 +53,7 @@ func runManagementFallback() error {
 		Description("What would you like to do?").
 		Options(
 			huh.NewOption("Applications", "apps"),
+			huh.NewOption("Development Environment", "dev"),
 			huh.NewOption("Device Status", "status"),
 			huh.NewOption("System Update", "update"),
 			huh.NewOption("Bluefin Tasks", "ujust"),
@@ -74,6 +76,8 @@ func runManagementChoice(choice string) error {
 	switch choice {
 	case "apps":
 		return appsCmd.RunE(appsCmd, []string{})
+	case "dev":
+		return devCmd.RunE(devCmd, []string{})
 	case "status":
 		return manageStatusCmd.RunE(manageStatusCmd, []string{})
 	case "update":

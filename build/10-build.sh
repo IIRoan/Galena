@@ -47,6 +47,12 @@ cp /ctx/custom/flatpaks/*.preinstall /etc/flatpak/preinstall.d/
 mkdir -p /usr/share/galena
 install -m 0644 /ctx/custom/vscode/settings.json /usr/share/galena/vscode-settings.json
 
+# Copy devcontainer profile catalog/templates for galena dev workflows
+if [ -d /ctx/custom/devcontainer ]; then
+    mkdir -p /usr/share/galena/devcontainer
+    cp -r /ctx/custom/devcontainer/* /usr/share/galena/devcontainer/
+fi
+
 echo "::endgroup::"
 
 echo "::group:: Install Packages"

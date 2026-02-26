@@ -35,6 +35,7 @@ func runManageStatus(cmd *cobra.Command, args []string) error {
 	printKV("OS", readOSReleaseValue("PRETTY_NAME", "unknown"))
 	printKV("Setup Done", markerStatus("/var/lib/galena/setup.done"))
 	printKV("VS Code Init", markerStatus("/var/lib/galena/vscode-settings.done"))
+	printKV("Dev Mode", readStateValue("/var/lib/galena/dev-mode", "host-only"))
 
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Tooling"))
@@ -43,6 +44,7 @@ func runManageStatus(cmd *cobra.Command, args []string) error {
 	printTool("flatpak")
 	printTool("ujust")
 	printTool("galena-build")
+	printTool("devcontainer")
 
 	fmt.Println()
 	fmt.Println(ui.Title.Render("Catalog Coverage"))
@@ -124,4 +126,16 @@ func readOSReleaseValue(key string, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+func readStateValue(path string, fallback string) string {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return fallback
+	}
+	value := strings.TrimSpace(string(data))
+	if value == "" {
+		return fallback
+	}
+	return value
 }
