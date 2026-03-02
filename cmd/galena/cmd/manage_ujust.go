@@ -312,18 +312,22 @@ func isTopLevelJustLine(raw string) bool {
 	return strings.TrimLeft(raw, " \t") == raw
 }
 
+func isAlphaNum(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+}
+
 func isValidUJustRecipeName(name string) bool {
 	if name == "" {
 		return false
 	}
 	for i, r := range name {
 		if i == 0 {
-			if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			if !isAlphaNum(r) && r != '_' {
 				return false
 			}
 			continue
 		}
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '-') {
+		if !isAlphaNum(r) && r != '_' && r != '-' {
 			return false
 		}
 	}
