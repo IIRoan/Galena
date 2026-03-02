@@ -38,19 +38,19 @@ Supported output types:
 
 Examples:
   # Build a QCOW2 image for VM testing
-  galena disk qcow2
+  galena-build disk qcow2
 
   # Build an ISO installer
-  galena disk iso
+  galena-build disk iso
 
   # Build with a specific image reference
-  galena disk qcow2 --image ghcr.io/myorg/myimage:stable
+  galena-build disk qcow2 --image ghcr.io/myorg/myimage:stable
 
   # Build with custom output directory
-  galena disk qcow2 --output ./images
+  galena-build disk qcow2 --output ./images
 
   # Use existing Justfile recipes
-  galena disk qcow2 --just`,
+  galena-build disk qcow2 --just`,
 	Args:      cobra.ExactArgs(1),
 	ValidArgs: build.ListOutputTypes(),
 	RunE:      runDisk,

@@ -93,10 +93,16 @@ func Run(ctx context.Context, name string, args []string, opts Options) *Result 
 	logPath, _ := ctx.Value("log-file").(string)
 	if phase != "" && logPath != "" {
 		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-			defer f.Close()
+			defer func() {
+				if closeErr := f.Close(); closeErr != nil && opts.Logger != nil {
+					opts.Logger.Warn("failed to close command log file", "error", closeErr)
+				}
+			}()
 			stdoutW = io.MultiWriter(stdoutW, f)
 			stderrW = io.MultiWriter(stderrW, f)
-			fmt.Fprintf(f, "\n--- [%s] Executing: %s %s ---\n", phase, name, strings.Join(args, " "))
+			if _, writeErr := fmt.Fprintf(f, "\n--- [%s] Executing: %s %s ---\n", phase, name, strings.Join(args, " ")); writeErr != nil && opts.Logger != nil {
+				opts.Logger.Warn("failed to write command header to log file", "error", writeErr)
+			}
 		}
 	}
 
@@ -304,7 +310,7 @@ func RunPipe(ctx context.Context, name1 string, args1 []string, name2 string, ar
 	// Wait for cmd1 in a goroutine
 	go func() {
 		_ = cmd1.Wait()
-		pw.Close()
+		_ = pw.Close()
 	}()
 
 	err := cmd2.Wait()

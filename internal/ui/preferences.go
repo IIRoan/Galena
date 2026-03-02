@@ -12,7 +12,7 @@ type Preferences struct {
 // CurrentPreferences holds the active UI preferences.
 var CurrentPreferences = Preferences{
 	Theme:      defaultThemeName,
-	ShowBanner: true,
+	ShowBanner: false,
 	Dense:      false,
 	NoColor:    false,
 	Advanced:   false,
@@ -20,11 +20,10 @@ var CurrentPreferences = Preferences{
 
 // ApplyPreferences updates UI preferences and active palette.
 func ApplyPreferences(p Preferences) {
-	if p.Theme == "" {
-		p.Theme = defaultThemeName
-	}
+	p.Theme = defaultThemeName
+	p.ShowBanner = false
 	CurrentPreferences = p
-	ApplyTheme(p.Theme, p.NoColor)
+	ApplyTheme(defaultThemeName, p.NoColor)
 }
 
 // ApplyTheme switches the color palette for the TUI.

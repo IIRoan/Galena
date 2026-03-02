@@ -19,9 +19,9 @@ var pushCmd = &cobra.Command{
 If no image is specified, pushes the default image with the latest tag.
 
 Examples:
-  galena push
-  galena push ghcr.io/myorg/myimage:stable
-  galena push --tag stable`,
+  galena-build push
+  galena-build push ghcr.io/myorg/myimage:stable
+  galena-build push --tag stable`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runPush,
 }

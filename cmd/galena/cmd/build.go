@@ -44,19 +44,19 @@ tags (stable, latest, beta).
 
 Examples:
   # Build with defaults (main variant, latest tag)
-  galena build
+  galena-build build
 
   # Build a specific variant and tag
-  galena build --variant main --tag stable
+  galena-build build --variant main --tag stable
 
   # Build and push to registry
-  galena build --push
+  galena-build build --push
 
   # Build, sign, and generate SBOM
-  galena build --push --sign --sbom
+  galena-build build --push --sign --sbom
 
   # Use existing Justfile (Phase 1 compatibility)
-  galena build --just`,
+  galena-build build --just`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runBuild,
 }

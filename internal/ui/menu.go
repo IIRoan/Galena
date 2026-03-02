@@ -2,12 +2,18 @@ package ui
 
 import (
 	"fmt"
+	"io"
+	"os"
+	"runtime/debug"
+	"strings"
+	"time"
 
-	"github.com/charmbracelet/bubbles/help"
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/list"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/help"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/list"
+	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 const (
@@ -18,8 +24,9 @@ const (
 type MenuOption func(*menuConfig)
 
 type menuConfig struct {
-	allowBack bool
-	backLabel string
+	allowBack          bool
+	backLabel          string
+	initialSelectionID string
 }
 
 func defaultMenuConfig() menuConfig {
@@ -38,11 +45,19 @@ func WithBackNavigation(label string) MenuOption {
 	}
 }
 
+// WithInitialSelectionID pre-selects an item by ID when the menu opens.
+func WithInitialSelectionID(id string) MenuOption {
+	return func(cfg *menuConfig) {
+		cfg.initialSelectionID = strings.TrimSpace(id)
+	}
+}
+
 type menuKeyMap struct {
 	Select  key.Binding
 	Back    key.Binding
 	Quit    key.Binding
 	Filter  key.Binding
+	Jump    key.Binding
 	hasBack bool
 }
 
@@ -55,10 +70,15 @@ func newMenuKeyMap(allowBack bool, backLabel string) menuKeyMap {
 		key.WithKeys("/"),
 		key.WithHelp("/", "filter"),
 	)
+	jumpKey := key.NewBinding(
+		key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"),
+		key.WithHelp("1-9", "quick launch"),
+	)
 	if allowBack {
 		return menuKeyMap{
 			Select:  selectKey,
 			Filter:  filterKey,
+			Jump:    jumpKey,
 			Back:    key.NewBinding(key.WithKeys("esc", "q"), key.WithHelp("esc/q", backLabel)),
 			Quit:    key.NewBinding(key.WithKeys("ctrl+c"), key.WithHelp("ctrl+c", "quit")),
 			hasBack: true,
@@ -67,6 +87,7 @@ func newMenuKeyMap(allowBack bool, backLabel string) menuKeyMap {
 	return menuKeyMap{
 		Select:  selectKey,
 		Filter:  filterKey,
+		Jump:    jumpKey,
 		Quit:    key.NewBinding(key.WithKeys("q", "esc", "ctrl+c"), key.WithHelp("q/esc", "quit")),
 		hasBack: false,
 	}
@@ -74,16 +95,16 @@ func newMenuKeyMap(allowBack bool, backLabel string) menuKeyMap {
 
 func (k menuKeyMap) ShortHelp() []key.Binding {
 	if k.hasBack {
-		return []key.Binding{k.Select, k.Filter, k.Back}
+		return []key.Binding{k.Select, k.Jump, k.Filter, k.Back}
 	}
-	return []key.Binding{k.Select, k.Filter, k.Quit}
+	return []key.Binding{k.Select, k.Jump, k.Filter, k.Quit}
 }
 
 func (k menuKeyMap) FullHelp() [][]key.Binding {
 	if k.hasBack {
-		return [][]key.Binding{{k.Select, k.Filter}, {k.Back, k.Quit}}
+		return [][]key.Binding{{k.Select, k.Jump, k.Filter}, {k.Back, k.Quit}}
 	}
-	return [][]key.Binding{{k.Select, k.Filter}, {k.Quit}}
+	return [][]key.Binding{{k.Select, k.Jump, k.Filter}, {k.Quit}}
 }
 
 // MenuItem represents a selectable item in a TUI list.
@@ -100,31 +121,104 @@ func (m MenuItem) Title() string { return m.TitleText }
 func (m MenuItem) Description() string { return m.Details }
 
 // FilterValue returns the filterable text.
-func (m MenuItem) FilterValue() string { return m.TitleText }
+func (m MenuItem) FilterValue() string { return m.TitleText + " " + m.Details + " " + m.ID }
+
+type menuTickMsg time.Time
 
 type menuModel struct {
-	list     list.Model
-	title    string
-	subtitle string
-	choice   string
-	quitting bool
+	list      list.Model
+	title     string
+	subtitle  string
+	choice    string
+	quitting  bool
 	allowBack bool
 	help      help.Model
 	keys      menuKeyMap
+
+	width  int
+	height int
+	now    time.Time
+
+	cliVersion    string
+	galenaVersion string
+}
+
+type menuLayout struct {
+	stacked     bool
+	leftWidth   int
+	rightWidth  int
+	leftHeight  int
+	rightHeight int
+	listWidth   int
+	listHeight  int
+}
+
+type launcherDelegate struct {
+	slot          lipgloss.Style
+	title         lipgloss.Style
+	selectedTitle lipgloss.Style
+	dimmedTitle   lipgloss.Style
+}
+
+func newLauncherDelegate() launcherDelegate {
+	return launcherDelegate{
+		slot: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(string(Muted))),
+		title: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(string(Foreground))),
+		selectedTitle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(string(Primary))).
+			Bold(true),
+		dimmedTitle: lipgloss.NewStyle().
+			Foreground(lipgloss.Color(string(Muted))),
+	}
+}
+
+func (d launcherDelegate) Height() int { return 1 }
+
+func (d launcherDelegate) Spacing() int { return 0 }
+
+func (d launcherDelegate) Update(tea.Msg, *list.Model) tea.Cmd { return nil }
+
+func (d launcherDelegate) Render(w io.Writer, m list.Model, index int, item list.Item) {
+	menuItem, ok := item.(MenuItem)
+	if !ok || m.Width() <= 0 {
+		return
+	}
+
+	isSelected := index == m.Index() && m.FilterState() != list.Filtering
+	emptyFilter := m.FilterState() == list.Filtering && strings.TrimSpace(m.FilterValue()) == ""
+
+	slot := fmt.Sprintf("%d.", index+1)
+	available := max(14, m.Width()-6)
+	content := menuItem.TitleText
+	if menuItem.Details != "" && m.Width() > 68 {
+		content += " - " + menuItem.Details
+	}
+	content = ansi.Truncate(content, available, "...")
+
+	prefix := "  "
+	slotText := d.slot.Render(slot)
+	titleText := d.title.Render(content)
+
+	if isSelected {
+		prefix = "> "
+		slotText = d.selectedTitle.Render(slot)
+		titleText = d.selectedTitle.Render(content)
+		fmt.Fprint(w, prefix+slotText+" "+titleText) //nolint:errcheck
+		return
+	}
+	if emptyFilter {
+		titleText = d.dimmedTitle.Render(content)
+		fmt.Fprint(w, prefix+slotText+" "+titleText) //nolint:errcheck
+		return
+	}
+	fmt.Fprint(w, prefix+slotText+" "+titleText) //nolint:errcheck
 }
 
 func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfig) menuModel {
-	delegate := list.NewDefaultDelegate()
-	delegate.ShowDescription = true
-	delegate.SetSpacing(0)
-	baseTitle := lipgloss.NewStyle().Foreground(Foreground)
-	delegate.Styles.NormalTitle = baseTitle
-	delegate.Styles.SelectedTitle = baseTitle.Foreground(Primary).Bold(true)
-	delegate.Styles.DimmedTitle = baseTitle.Foreground(Muted)
-	delegate.Styles.NormalDesc = baseTitle.Foreground(Muted)
-	delegate.Styles.SelectedDesc = baseTitle.Foreground(Muted)
-	delegate.Styles.DimmedDesc = baseTitle.Foreground(Muted)
-	delegate.Styles.FilterMatch = lipgloss.NewStyle().Underline(true)
+	delegate := newLauncherDelegate()
+	cliVersion, galenaVersion := resolveSystemVersions()
 
 	listItems := make([]list.Item, len(items))
 	for i, item := range items {
@@ -137,44 +231,73 @@ func newMenuModel(title string, subtitle string, items []MenuItem, cfg menuConfi
 	l.SetShowStatusBar(false)
 	l.SetShowPagination(false)
 	l.DisableQuitKeybindings()
-	l.Styles.HelpStyle = HintStyle
-	l.Styles.PaginationStyle = HintStyle
+	l.Styles.HelpStyle = lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
+	l.Styles.PaginationStyle = l.Styles.HelpStyle
+
+	if cfg.initialSelectionID != "" {
+		for idx, item := range items {
+			if item.ID == cfg.initialSelectionID {
+				l.Select(idx)
+				break
+			}
+		}
+	}
 
 	helpModel := help.New()
-	helpModel.Styles.ShortKey = KeyStyle
-	helpModel.Styles.ShortDesc = HintStyle
-	helpModel.Styles.FullKey = KeyStyle
-	helpModel.Styles.FullDesc = HintStyle
-	helpModel.Styles.Ellipsis = HintStyle
+	keyStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Accent))).Bold(true)
+	hintStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(string(Muted)))
+	helpModel.Styles.ShortKey = keyStyle
+	helpModel.Styles.ShortDesc = hintStyle
+	helpModel.Styles.FullKey = keyStyle
+	helpModel.Styles.FullDesc = hintStyle
+	helpModel.Styles.Ellipsis = hintStyle
 
 	keys := newMenuKeyMap(cfg.allowBack, cfg.backLabel)
 
 	return menuModel{
-		list:      l,
-		title:     title,
-		subtitle:  subtitle,
-		allowBack: cfg.allowBack,
-		help:      helpModel,
-		keys:      keys,
+		list:          l,
+		title:         title,
+		subtitle:      subtitle,
+		allowBack:     cfg.allowBack,
+		help:          helpModel,
+		keys:          keys,
+		now:           time.Now(),
+		cliVersion:    cliVersion,
+		galenaVersion: galenaVersion,
 	}
 }
 
+func menuTick() tea.Cmd {
+	return tea.Tick(time.Second, func(t time.Time) tea.Msg {
+		return menuTickMsg(t)
+	})
+}
+
 func (m menuModel) Init() tea.Cmd {
-	return nil
+	return menuTick()
 }
 
 func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
-		width := clampSize(msg.Width-2, 40)
-		height := clampSize(msg.Height-8, 10)
-		m.list.SetSize(width, height)
-	case tea.KeyMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		m.resizeList()
+	case menuTickMsg:
+		m.now = time.Time(msg)
+		return m, menuTick()
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "enter":
 			if item, ok := m.list.SelectedItem().(MenuItem); ok {
 				m.choice = item.ID
 				return m, tea.Quit
+			}
+		case "1", "2", "3", "4", "5", "6", "7", "8", "9":
+			if m.list.FilterState() != list.Filtering {
+				if m.selectByNumber(msg.String()) {
+					return m, tea.Quit
+				}
 			}
 		case "q", "esc":
 			m.quitting = true
@@ -196,21 +319,311 @@ func (m menuModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m menuModel) View() string {
-	if m.quitting {
-		return ""
+func (m *menuModel) pageStartIndex() int {
+	start := m.list.Index() - m.list.Cursor()
+	if start < 0 {
+		return 0
 	}
-
-	content := m.list.View()
-	footer := m.help.View(m.keys)
-	return Frame(m.title, m.subtitle, content, footer)
+	return start
 }
 
-func clampSize(value int, min int) int {
-	if value < min {
-		return min
+func (m *menuModel) selectByNumber(keyNum string) bool {
+	if len(keyNum) != 1 {
+		return false
 	}
-	return value
+	slot := int(keyNum[0]-'1') + 1
+	if slot < 1 || slot > 9 {
+		return false
+	}
+
+	visible := m.list.VisibleItems()
+	if len(visible) == 0 {
+		return false
+	}
+
+	target := m.pageStartIndex() + (slot - 1)
+	if target < 0 || target >= len(visible) {
+		return false
+	}
+
+	m.list.Select(target)
+	if item, ok := visible[target].(MenuItem); ok {
+		m.choice = item.ID
+		return true
+	}
+	return false
+}
+
+func (m *menuModel) resizeList() {
+	width := m.width
+	height := m.height
+	if width <= 0 {
+		width = terminalWidth()
+	}
+	if height <= 0 {
+		height = 26
+	}
+	layout := calculateMenuLayout(width, height)
+	m.list.SetSize(layout.listWidth, layout.listHeight)
+}
+
+func (m menuModel) View() tea.View {
+	if m.quitting {
+		return tea.View{}
+	}
+
+	width := m.width
+	height := m.height
+	if width <= 0 {
+		width = terminalWidth()
+	}
+	if height <= 0 {
+		height = 26
+	}
+	layout := calculateMenuLayout(width, height)
+
+	leftPanel := lipgloss.NewStyle().
+		Width(layout.leftWidth).
+		Height(layout.leftHeight).
+		PaddingRight(1).
+		Render(m.renderLeftPanel(layout.leftWidth - 1))
+
+	rightPanel := lipgloss.NewStyle().
+		Width(layout.rightWidth).
+		Height(layout.rightHeight).
+		PaddingLeft(1).
+		Render(m.renderRightPanel(layout.rightWidth-1, layout.rightHeight))
+
+	var body string
+	if layout.stacked {
+		body = lipgloss.JoinVertical(lipgloss.Left, leftPanel, "", rightPanel)
+	} else {
+		body = lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	}
+	footer := m.help.View(m.keys)
+
+	v := tea.NewView(Frame(m.title, m.subtitle, body, footer))
+	v.AltScreen = true
+	return v
+}
+
+func (m menuModel) renderLeftPanel(innerWidth int) string {
+	filter := strings.TrimSpace(m.list.FilterValue())
+	if filter == "" {
+		return m.list.View()
+	}
+	filterHint := MutedStyle.Render("filter: " + ansi.Truncate(filter, max(10, innerWidth-8), "..."))
+	return lipgloss.JoinVertical(lipgloss.Left, m.list.View(), "", filterHint)
+}
+
+func (m menuModel) renderRightPanel(innerWidth int, innerHeight int) string {
+	item, _ := m.list.SelectedItem().(MenuItem)
+	clock := m.now.Format("15:04:05")
+	if clock == "00:00:00" {
+		clock = time.Now().Format("15:04:05")
+	}
+
+	section := []string{
+		lipgloss.NewStyle().Foreground(lipgloss.Color(string(Accent))).Bold(true).Render("Selection"),
+	}
+
+	if item.TitleText != "" {
+		section = append(section,
+			PrimaryStyle().Render(ansi.Truncate(item.TitleText, max(8, innerWidth), "...")),
+		)
+		if strings.TrimSpace(item.Details) != "" {
+			section = append(section, MutedStyle.Render(ansi.Truncate(item.Details, max(8, innerWidth), "...")))
+		}
+		section = append(section, MutedStyle.Render("id: "+item.ID))
+	} else {
+		section = append(section, MutedStyle.Render("No selection"))
+	}
+
+	section = append(section,
+		"",
+		lipgloss.NewStyle().Foreground(lipgloss.Color(string(Accent))).Bold(true).Render("System"),
+		menuInfoLine("CLI", m.cliVersion, innerWidth),
+		menuInfoLine("Galena", m.galenaVersion, innerWidth),
+		menuInfoLine("Clock", clock, innerWidth),
+		"",
+		MutedStyle.Render("Enter to run"),
+		MutedStyle.Render("1-9 quick launch"),
+	)
+
+	if len(section) > innerHeight {
+		section = section[:innerHeight]
+	}
+	return strings.Join(section, "\n")
+}
+
+func calculateMenuLayout(width int, height int) menuLayout {
+	const (
+		gap            = 2
+		minLeftWidth   = 48
+		minRightWidth  = 26
+		maxRightWidth  = 36
+		stackThreshold = 84
+		minPanelHeight = 8
+		minListHeight  = 5
+		leftListExtraH = 2
+	)
+
+	bodyHeight := height - 6
+	if bodyHeight < 9 {
+		bodyHeight = 9
+	}
+
+	stacked := width < stackThreshold
+	if !stacked {
+		maxLeftWidth := width - minRightWidth - gap
+		if maxLeftWidth < minLeftWidth {
+			stacked = true
+		}
+	}
+
+	if stacked {
+		leftHeight := (bodyHeight * 3) / 5
+		if leftHeight < minPanelHeight {
+			leftHeight = minPanelHeight
+		}
+		rightHeight := bodyHeight - leftHeight
+		if rightHeight < minPanelHeight {
+			rightHeight = minPanelHeight
+			leftHeight = bodyHeight - rightHeight
+			if leftHeight < minPanelHeight {
+				leftHeight = minPanelHeight
+			}
+		}
+
+		listWidth := width - 5
+		if listWidth < 4 {
+			listWidth = 4
+		}
+		listHeight := leftHeight - leftListExtraH
+		if listHeight < minListHeight {
+			listHeight = minListHeight
+		}
+
+		return menuLayout{
+			stacked:     true,
+			leftWidth:   max(1, width),
+			rightWidth:  max(1, width),
+			leftHeight:  leftHeight,
+			rightHeight: rightHeight,
+			listWidth:   listWidth,
+			listHeight:  listHeight,
+		}
+	}
+
+	rightWidth := width / 4
+	if rightWidth < minRightWidth {
+		rightWidth = minRightWidth
+	}
+	if rightWidth > maxRightWidth {
+		rightWidth = maxRightWidth
+	}
+	leftWidth := width - rightWidth - gap
+	if leftWidth < minLeftWidth {
+		leftWidth = minLeftWidth
+		rightWidth = width - leftWidth - gap
+		if rightWidth < minRightWidth {
+			rightWidth = minRightWidth
+		}
+	}
+
+	listWidth := leftWidth - 4
+	if listWidth < 4 {
+		listWidth = 4
+	}
+	listHeight := bodyHeight - 1
+	if listHeight < minListHeight {
+		listHeight = minListHeight
+	}
+
+	return menuLayout{
+		stacked:     false,
+		leftWidth:   leftWidth,
+		rightWidth:  rightWidth,
+		leftHeight:  bodyHeight,
+		rightHeight: bodyHeight,
+		listWidth:   listWidth,
+		listHeight:  listHeight,
+	}
+}
+
+func menuInfoLine(label string, value string, width int) string {
+	if strings.TrimSpace(value) == "" {
+		value = "unknown"
+	}
+	line := fmt.Sprintf("%-7s %s", strings.ToLower(label)+":", value)
+	return MutedStyle.Render(ansi.Truncate(line, max(10, width), "..."))
+}
+
+func resolveSystemVersions() (cliVersion string, galenaVersion string) {
+	cliVersion = "dev"
+	if info, ok := debug.ReadBuildInfo(); ok {
+		if info.Main.Version != "" && info.Main.Version != "(devel)" {
+			cliVersion = info.Main.Version
+		} else {
+			for _, setting := range info.Settings {
+				if setting.Key == "vcs.revision" && setting.Value != "" {
+					revision := setting.Value
+					if len(revision) > 7 {
+						revision = revision[:7]
+					}
+					cliVersion = "dev-" + revision
+					break
+				}
+			}
+		}
+	}
+
+	osRelease := readOSRelease()
+	galenaVersion = firstNonEmpty(
+		osRelease["IMAGE_VERSION"],
+		osRelease["VERSION_ID"],
+		"unknown",
+	)
+
+	return cliVersion, galenaVersion
+}
+
+func readOSRelease() map[string]string {
+	files := []string{"/etc/os-release", "/usr/lib/os-release"}
+	values := map[string]string{}
+
+	for _, path := range files {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			continue
+		}
+		for _, raw := range strings.Split(string(data), "\n") {
+			line := strings.TrimSpace(raw)
+			if line == "" || strings.HasPrefix(line, "#") {
+				continue
+			}
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) != 2 {
+				continue
+			}
+			key := strings.TrimSpace(parts[0])
+			value := strings.Trim(strings.TrimSpace(parts[1]), `"`)
+			if key != "" && value != "" {
+				values[key] = value
+			}
+		}
+	}
+
+	return values
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 // RunMenu displays a TUI list and returns the selected item ID.
@@ -235,7 +648,7 @@ func RunMenuWithOptions(title string, subtitle string, items []MenuItem, options
 }
 
 func runMenuModel(model menuModel) (string, error) {
-	program := tea.NewProgram(model, tea.WithAltScreen())
+	program := tea.NewProgram(model)
 	result, err := program.Run()
 	if err != nil {
 		return "", err

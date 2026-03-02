@@ -1,4 +1,4 @@
-// galena is a CLI tool for building and managing OCI-native OS images
+// galena is the runtime management CLI for Galena devices.
 package main
 
 import (
@@ -8,7 +8,7 @@ import (
 )
 
 func main() {
-	if err := cmd.Execute(); err != nil {
+	if err := cmd.ExecuteManagement(); err != nil {
 		os.Exit(1)
 	}
 }

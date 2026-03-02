@@ -12,9 +12,9 @@ import (
 )
 
 var (
-	signKeyless  bool
-	signKey      string
-	signVerify   bool
+	signKeyless bool
+	signKey     string
+	signVerify  bool
 )
 
 var signCmd = &cobra.Command{
@@ -27,13 +27,13 @@ You can also use a local key file for signing.
 
 Examples:
   # Keyless signing (GitHub OIDC)
-  galena sign ghcr.io/myorg/myimage:stable
+  galena-build sign ghcr.io/myorg/myimage:stable
 
   # Sign with a key file
-  galena sign ghcr.io/myorg/myimage:stable --key cosign.key
+  galena-build sign ghcr.io/myorg/myimage:stable --key cosign.key
 
   # Verify a signature
-  galena sign --verify ghcr.io/myorg/myimage:stable`,
+  galena-build sign --verify ghcr.io/myorg/myimage:stable`,
 	Args: cobra.ExactArgs(1),
 	RunE: runSign,
 }

@@ -54,20 +54,20 @@ Environment variables:
 
 Examples:
   # Run in GitHub Actions
-  galena ci build
+  galena-build ci build
 
   # Build and push (if on default branch)
-  galena ci build --push
+  galena-build ci build --push
 
   # Build with signing and SBOM
-  galena ci build --push --sign --sbom`,
+  galena-build ci build --push --sign --sbom`,
 	RunE: runCIBuild,
 }
 
 var ciSetupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Setup CI environment",
-	Long: `Setup the CI environment by installing galena and dependencies.
+	Long: `Setup the CI environment by installing galena-build and dependencies.
 
 This is typically run as the first step in a CI pipeline to ensure
 all tools are available.`,
@@ -94,8 +94,6 @@ func init() {
 	ciBuildCmd.Flags().StringVar(&ciImageDesc, "description", "", "Image description")
 	ciBuildCmd.Flags().StringVar(&ciImageKeywords, "keywords", "", "Image keywords (default: bootc,ublue,universal-blue)")
 	ciBuildCmd.Flags().StringVar(&ciImageLogoURL, "logo-url", "", "Image logo URL for ArtifactHub")
-
-	rootCmd.AddCommand(ciCmd)
 }
 
 func runCIBuild(cmd *cobra.Command, args []string) error {
@@ -240,7 +238,7 @@ func runCIBuild(cmd *cobra.Command, args []string) error {
 
 		sbomPath := filepath.Join(rootDir, "sbom.spdx.json")
 		localImageRef := fmt.Sprintf("%s:%s", imageName, primaryTag)
-		
+
 		var err error
 		if exec.CheckCommand("trivy") {
 			if versionResult := exec.Trivy(ctx, "--version"); versionResult.Err == nil {

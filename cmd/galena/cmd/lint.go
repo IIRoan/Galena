@@ -24,8 +24,8 @@ This checks:
   - Boot configuration
 
 Examples:
-  galena lint
-  galena lint ghcr.io/myorg/myimage:stable`,
+  galena-build lint
+  galena-build lint ghcr.io/myorg/myimage:stable`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runLint,
 }

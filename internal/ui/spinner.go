@@ -5,9 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	lipgloss "charm.land/lipgloss/v2"
 )
 
 type SpinnerModel struct {
@@ -20,7 +20,7 @@ type SpinnerModel struct {
 func NewSpinner(message string) SpinnerModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
-	s.Style = lipgloss.NewStyle().Foreground(Primary)
+	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color(string(Primary)))
 	return SpinnerModel{
 		spinner: s,
 		message: message,
@@ -33,7 +33,7 @@ func (m SpinnerModel) Init() tea.Cmd {
 
 func (m SpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
 			m.quitting = true
@@ -54,14 +54,14 @@ func (m SpinnerModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m SpinnerModel) View() string {
+func (m SpinnerModel) View() tea.View {
 	if m.quitting {
 		if m.err != nil {
-			return ErrorStyle.Render("✗ " + m.message + " failed: " + m.err.Error() + "\n")
+			return tea.NewView(ErrorStyle.Render("✗ " + m.message + " failed: " + m.err.Error() + "\n"))
 		}
-		return SuccessStyle.Render("✓ " + m.message + "\n")
+		return tea.NewView(SuccessStyle.Render("✓ " + m.message + "\n"))
 	}
-	return m.spinner.View() + " " + m.message + "\n"
+	return tea.NewView(m.spinner.View() + " " + m.message + "\n")
 }
 
 type errMsg struct{ err error }

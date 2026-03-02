@@ -2,14 +2,16 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/spinner"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/spinner"
+	tea "charm.land/bubbletea/v2"
+	lipglossv2 "charm.land/lipgloss/v2"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
@@ -24,19 +26,7 @@ var setupCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.AddCommand(setupCmd)
 }
-
-type step int
-
-const (
-	stepIntro step = iota
-	stepBrew
-	stepFlatpak
-	stepSummary
-	stepDeploy
-	stepDone
-)
 
 type installTask struct {
 	name string
@@ -44,29 +34,38 @@ type installTask struct {
 }
 
 type taskStartedMsg installTask
+
 type taskFinishedMsg struct {
 	task    installTask
 	skipped bool
 	err     error
 }
+
 type allFinishedMsg struct{}
 
-type model struct {
-	currentStep      step
-	brewPackages     []string
-	flatpakApps      []string
+type setupDevMode string
+
+const (
+	setupDevModeHostOnly         setupDevMode = "host-only"
+	setupDevModeDevcontainerOnly setupDevMode = "devcontainer-first"
+)
+
+type deploymentModel struct {
 	selectedBrew     []string
 	selectedFlatpaks []string
 	disableSetup     bool
-	form             *huh.Form
-	width            int
-	height           int
-	quitting         bool
-	installing       bool
-	spinner          spinner.Model
-	finished         bool
+	devMode          setupDevMode
+	devBootstrapErr  string
 
-	// Installation state
+	width      int
+	height     int
+	quitting   bool
+	installing bool
+	spinner    spinner.Model
+	finished   bool
+
+	keyboardReportEvents bool
+
 	pendingTasks    []installTask
 	completedTasks  int
 	totalTasks      int
@@ -94,112 +93,167 @@ func runSetup(cmd *cobra.Command, args []string) error {
 		flatpakApps, _ = getFlatpakApps("custom/flatpaks/default.preinstall")
 	}
 
-	s := spinner.New()
-	s.Spinner = spinner.Dot
-	s.Style = ui.PrimaryStyle()
-
-	m := &model{
-		currentStep:  stepIntro,
-		brewPackages: brewPackages,
-		flatpakApps:  flatpakApps,
-		disableSetup: true,
-		spinner:      s,
+	selectedBrew, selectedFlatpaks, disableSetup, devMode, err := promptSetupSelections(brewPackages, flatpakApps)
+	if err != nil {
+		if errors.Is(err, huh.ErrUserAborted) {
+			return nil
+		}
+		return err
 	}
 
-	m.updateForm()
+	s := spinner.New()
+	s.Spinner = spinner.Dot
+	s.Style = lipglossv2.NewStyle().Foreground(lipglossv2.Color(string(ui.Primary)))
 
-	p := tea.NewProgram(m, tea.WithAltScreen())
+	m := &deploymentModel{
+		selectedBrew:     selectedBrew,
+		selectedFlatpaks: selectedFlatpaks,
+		disableSetup:     disableSetup,
+		devMode:          devMode,
+		spinner:          s,
+	}
+
+	p := tea.NewProgram(m)
 	finalModel, err := p.Run()
 	if err != nil {
 		return err
 	}
-	if fm, ok := finalModel.(*model); ok && fm.finished {
+	if fm, ok := finalModel.(*deploymentModel); ok && fm.finished {
+		if fm.devMode == setupDevModeDevcontainerOnly {
+			err := ui.RunWithSpinner("Bootstrapping devcontainer workspace", func() error {
+				return bootstrapSetupDevcontainer(defaultDevProfileID)
+			})
+			if err != nil {
+				fm.devBootstrapErr = err.Error()
+			}
+		}
 		printSetupSummary(fm)
 	}
 	return nil
 }
 
-func (m *model) updateForm() {
-	var group *huh.Group
-
-	switch m.currentStep {
-	case stepIntro:
-		group = huh.NewGroup(
+func promptSetupSelections(brewPackages []string, flatpakApps []string) ([]string, []string, bool, setupDevMode, error) {
+	if err := huh.NewForm(
+		huh.NewGroup(
 			huh.NewNote().
 				Title("WELCOME TO GALENA").
-				Description("\n" + ui.MutedStyle.Render("This wizard will personalize your new installation by setting up user-specific packages and desktop applications.") + "\n\n" +
+				Description("\n" + ui.MutedStyle.Render("This wizard personalizes your installation by selecting CLI and GUI packages.") + "\n\n" +
 					ui.PanelTitle.Render("Phase 1: Environment Provisioning") + "\n" +
-					"We will discover available tools and let you choose exactly what to install."),
-		)
-	case stepBrew:
-		options := make([]huh.Option[string], 0)
-		for _, pkg := range m.brewPackages {
-			options = append(options, huh.NewOption(pkg, pkg).Selected(true))
+					"Choose exactly what to install before deployment."),
+		),
+	).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		return nil, nil, false, setupDevModeHostOnly, err
+	}
+
+	selectedBrew := make([]string, 0, len(brewPackages))
+	if len(brewPackages) > 0 {
+		options := make([]huh.Option[string], 0, len(brewPackages))
+		for _, pkg := range brewPackages {
+			options = append(options, huh.NewOption(pkg, pkg))
 		}
-		group = huh.NewGroup(
-			huh.NewMultiSelect[string]().
-				Title("SELECT CLI TOOLS").
-				Description("Choose command-line utilities to be managed via Homebrew.").
-				Options(options...).
-				Value(&m.selectedBrew).
-				Height(12).
-				Filterable(true),
-		)
-	case stepFlatpak:
-		options := make([]huh.Option[string], 0)
-		for _, app := range m.flatpakApps {
-			options = append(options, huh.NewOption(app, app).Selected(true))
+		if err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewMultiSelect[string]().
+					Title("SELECT CLI TOOLS").
+					Description("Choose command-line utilities to be managed via Homebrew. Press q to go back.").
+					Options(options...).
+					Value(&selectedBrew).
+					Height(12).
+					Filterable(true),
+			),
+		).
+			WithTheme(ui.HuhTheme()).
+			WithKeyMap(newHuhBackOnQKeyMap()).
+			Run(); err != nil {
+			return nil, nil, false, setupDevModeHostOnly, err
 		}
-		group = huh.NewGroup(
-			huh.NewMultiSelect[string]().
-				Title("SELECT APPLICATIONS").
-				Description("Choose desktop applications to be installed via Flatpak.").
-				Options(options...).
-				Value(&m.selectedFlatpaks).
-				Height(12).
-				Filterable(true),
-		)
-	case stepSummary:
-		group = huh.NewGroup(
+	}
+
+	selectedFlatpaks := make([]string, 0, len(flatpakApps))
+	if len(flatpakApps) > 0 {
+		options := make([]huh.Option[string], 0, len(flatpakApps))
+		for _, app := range flatpakApps {
+			options = append(options, huh.NewOption(app, app))
+		}
+		if err := huh.NewForm(
+			huh.NewGroup(
+				huh.NewMultiSelect[string]().
+					Title("SELECT APPLICATIONS").
+					Description("Choose desktop applications to be installed via Flatpak. Press q to go back.").
+					Options(options...).
+					Value(&selectedFlatpaks).
+					Height(12).
+					Filterable(true),
+			),
+		).
+			WithTheme(ui.HuhTheme()).
+			WithKeyMap(newHuhBackOnQKeyMap()).
+			Run(); err != nil {
+			return nil, nil, false, setupDevModeHostOnly, err
+		}
+	}
+
+	devMode := setupDevModeDevcontainerOnly
+	if err := huh.NewForm(
+		huh.NewGroup(
+			huh.NewSelect[setupDevMode]().
+				Title("DEVELOPMENT MODE").
+				Description("Choose where development toolchains should live.").
+				Options(
+					huh.NewOption("Devcontainer-first", setupDevModeDevcontainerOnly),
+					huh.NewOption("Host-only", setupDevModeHostOnly),
+				).
+				Value(&devMode),
+		),
+	).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		return nil, nil, false, setupDevModeHostOnly, err
+	}
+
+	disableSetup := true
+	if err := huh.NewForm(
+		huh.NewGroup(
 			huh.NewConfirm().
 				Title("READY TO DEPLOY?").
-				Description(fmt.Sprintf("\n%s\n%s\n\nPersist configuration?\n%s",
-					ui.AccentStyle().Render(fmt.Sprintf(" • %d CLI tools", len(m.selectedBrew))),
-					ui.AccentStyle().Render(fmt.Sprintf(" • %d GUI apps", len(m.selectedFlatpaks))),
+				Description(fmt.Sprintf("\n%s\n%s\n%s\n\nPersist setup completion?\n%s",
+					ui.AccentStyle().Render(fmt.Sprintf(" • %d CLI tools", len(selectedBrew))),
+					ui.AccentStyle().Render(fmt.Sprintf(" • %d GUI apps", len(selectedFlatpaks))),
+					ui.AccentStyle().Render(fmt.Sprintf(" • Development mode: %s", devMode)),
 					ui.MutedStyle.Render("If yes, this wizard will not show again on next boot."),
 				)).
-				Value(&m.disableSetup).
+				Value(&disableSetup).
 				Affirmative("Deploy Now").
 				Negative("Keep showing"),
-		)
+		),
+	).WithTheme(ui.HuhTheme()).Run(); err != nil {
+		return nil, nil, false, setupDevModeHostOnly, err
 	}
 
-	if group != nil {
-		m.form = huh.NewForm(group).WithTheme(ui.HuhTheme())
-		m.form.Init()
-		m.form.NextField()
-		m.form.PrevField()
-	}
+	return selectedBrew, selectedFlatpaks, disableSetup, devMode, nil
 }
 
-func (m *model) Init() tea.Cmd {
-	return m.spinner.Tick
+func (m *deploymentModel) Init() tea.Cmd {
+	m.prepareTasks()
+	m.installing = true
+	return tea.Batch(
+		m.spinner.Tick,
+		m.nextTask(),
+	)
 }
 
-func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmds []tea.Cmd
-
+func (m *deploymentModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
-	case tea.KeyMsg:
+	case tea.KeyboardEnhancementsMsg:
+		m.keyboardReportEvents = msg.SupportsEventTypes()
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "ctrl+c":
 			m.quitting = true
 			return m, tea.Quit
 		case "q":
-			if m.currentStep == stepDone {
+			if m.finished {
 				m.quitting = true
 				return m, tea.Quit
 			}
@@ -220,44 +274,15 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.nextTask()
 	case allFinishedMsg:
-		m.currentStep = stepDone
 		m.finished = true
 		m.quitting = true
 		return m, tea.Quit
 	}
 
-	if m.currentStep == stepDeploy && !m.installing {
-		m.installing = true
-		m.prepareTasks()
-		return m, m.nextTask()
-	}
-
-	if m.form != nil && m.currentStep < stepDeploy {
-		form, cmd := m.form.Update(msg)
-		if f, ok := form.(*huh.Form); ok {
-			m.form = f
-		}
-		cmds = append(cmds, cmd)
-
-		if m.form.State == huh.StateCompleted {
-			if m.currentStep == stepSummary {
-				m.currentStep = stepDeploy
-				if !m.installing {
-					m.installing = true
-					m.prepareTasks()
-					cmds = append(cmds, m.nextTask())
-				}
-			} else {
-				m.currentStep++
-				m.updateForm()
-			}
-		}
-	}
-
-	return m, tea.Batch(cmds...)
+	return m, nil
 }
 
-func (m *model) prepareTasks() {
+func (m *deploymentModel) prepareTasks() {
 	m.pendingTasks = make([]installTask, 0)
 	for _, pkg := range m.selectedBrew {
 		m.pendingTasks = append(m.pendingTasks, installTask{name: pkg, kind: "brew"})
@@ -269,7 +294,7 @@ func (m *model) prepareTasks() {
 	m.completedTasks = 0
 }
 
-func (m *model) nextTask() tea.Cmd {
+func (m *deploymentModel) nextTask() tea.Cmd {
 	if len(m.pendingTasks) == 0 {
 		return m.finalize()
 	}
@@ -300,27 +325,37 @@ func (m *model) nextTask() tea.Cmd {
 	)
 }
 
-func (m *model) finalize() tea.Cmd {
+func (m *deploymentModel) finalize() tea.Cmd {
 	return func() tea.Msg {
+		_ = os.MkdirAll("/var/lib/galena", 0o755)
+		_ = os.WriteFile("/var/lib/galena/dev-mode", []byte(string(m.devMode)+"\n"), 0o644)
 		if m.disableSetup {
-			_ = os.MkdirAll("/var/lib/galena", 0755)
-			_ = os.WriteFile("/var/lib/galena/setup.done", []byte("done"), 0644)
+			_ = os.WriteFile("/var/lib/galena/setup.done", []byte("done"), 0o644)
 		}
 		return allFinishedMsg{}
 	}
 }
 
-func (m *model) View() string {
+func (m *deploymentModel) View() tea.View {
 	if m.quitting {
-		return ""
+		return tea.View{}
 	}
 
-	sidebarWidth := 26
-	contentWidth := m.width - sidebarWidth - 6
+	width := m.width
+	if width <= 0 {
+		width = 100
+	}
+	height := m.height
+	if height <= 0 {
+		height = 30
+	}
+
+	sidebarWidth := 28
+	contentWidth := width - sidebarWidth - 6
 	if contentWidth < 40 {
 		contentWidth = 40
 	}
-	contentHeight := m.height - 4
+	contentHeight := height - 4
 	if contentHeight < 8 {
 		contentHeight = 8
 	}
@@ -331,7 +366,7 @@ func (m *model) View() string {
 
 	sidebarStyle := lipgloss.NewStyle().
 		Width(sidebarWidth).
-		Height(m.height-4).
+		Height(height-4).
 		Border(lipgloss.NormalBorder(), false, true, false, false).
 		BorderForeground(ui.Muted).
 		Padding(1, 2)
@@ -342,46 +377,54 @@ func (m *model) View() string {
 		Padding(1, 4)
 
 	var sb strings.Builder
-	steps := []string{"Introduction", "CLI Utilities", "Applications", "Summary", "Deployment"}
-	for i, s := range steps {
-		stepIdx := step(i)
-		prefix := "  "
-		style := ui.MutedStyle
-		if m.currentStep == stepIdx {
-			prefix = "→ "
-			style = ui.PrimaryStyle()
-		} else if m.currentStep > stepIdx {
-			prefix = "✓ "
-			style = ui.SuccessStyle
-		}
-		sb.WriteString(style.Render(prefix+s) + "\n\n")
+	sb.WriteString(ui.PanelTitle.Render("DEPLOYMENT") + "\n\n")
+	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("CLI tools: %d", len(m.selectedBrew))) + "\n")
+	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("GUI apps:  %d", len(m.selectedFlatpaks))) + "\n\n")
+	sb.WriteString(ui.MutedStyle.Render(fmt.Sprintf("Dev mode:  %s", m.devMode)) + "\n")
+	sb.WriteString("\n")
+	sb.WriteString(ui.AccentStyle().Render(fmt.Sprintf("Progress: %d/%d", m.completedTasks, m.totalTasks)) + "\n\n")
+	if m.keyboardReportEvents {
+		sb.WriteString(ui.SuccessStyle.Render("Keyboard enhancements: active") + "\n")
+	} else {
+		sb.WriteString(ui.MutedStyle.Render("Keyboard enhancements: basic") + "\n")
 	}
 
 	header := ui.Header(" SYSTEM SETUP ")
-
-	var body string
-	if m.currentStep == stepDeploy {
-		body = m.renderDeploymentView(contentInnerWidth)
-	} else if m.form != nil {
-		body = m.form.View()
-	}
-
-	main := lipgloss.JoinHorizontal(lipgloss.Top,
+	main := lipgloss.JoinHorizontal(
+		lipgloss.Top,
 		sidebarStyle.Render(sb.String()),
-		contentStyle.Render(body),
+		contentStyle.Render(m.renderDeploymentView(contentInnerWidth)),
 	)
 
-	return lipgloss.JoinVertical(lipgloss.Left, header, main)
+	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, main))
+	v.AltScreen = true
+	v.WindowTitle = "Galena Setup"
+	v.KeyboardEnhancements.ReportEventTypes = true
+
+	progressPercent := 0
+	if m.totalTasks > 0 {
+		progressPercent = int(float64(m.completedTasks) / float64(m.totalTasks) * 100)
+	}
+	state := tea.ProgressBarDefault
+	if len(m.failedItems) > 0 {
+		state = tea.ProgressBarWarning
+	}
+	v.ProgressBar = tea.NewProgressBar(state, progressPercent)
+
+	return v
 }
 
-func (m *model) renderDeploymentView(contentWidth int) string {
+func (m *deploymentModel) renderDeploymentView(contentWidth int) string {
 	var s strings.Builder
 	s.WriteString(ui.PanelTitle.Render("PROVISIONING IN PROGRESS") + "\n\n")
 
-	taskLine := fmt.Sprintf("%s Processing: %s", m.spinner.View(), ui.AccentStyle().Render(m.currentTaskName))
+	taskLabel := m.currentTaskName
+	if taskLabel == "" {
+		taskLabel = "Preparing tasks..."
+	}
+	taskLine := fmt.Sprintf("%s Processing: %s", m.spinner.View(), ui.AccentStyle().Render(taskLabel))
 	s.WriteString(lipgloss.NewStyle().Width(contentWidth).Render(taskLine) + "\n\n")
 
-	// Progress Bar
 	barWidth := contentWidth - 6
 	if barWidth > 40 {
 		barWidth = 40
@@ -389,10 +432,10 @@ func (m *model) renderDeploymentView(contentWidth int) string {
 	if barWidth < 10 {
 		barWidth = 10
 	}
+
 	filled := 0
 	if m.totalTasks > 0 {
-		percent := float64(m.completedTasks) / float64(m.totalTasks)
-		filled = int(percent * float64(barWidth))
+		filled = int(float64(m.completedTasks) / float64(m.totalTasks) * float64(barWidth))
 	}
 	bar := lipgloss.NewStyle().Foreground(ui.Success).Render(strings.Repeat("█", filled)) +
 		lipgloss.NewStyle().Foreground(ui.Muted).Render(strings.Repeat("░", barWidth-filled))
@@ -401,14 +444,13 @@ func (m *model) renderDeploymentView(contentWidth int) string {
 	if m.totalTasks > 0 {
 		progPercent = int(float64(m.completedTasks) / float64(m.totalTasks) * 100)
 	}
-	s.WriteString(fmt.Sprintf("%s %d%%\n\n", bar, progPercent))
-
+	_, _ = fmt.Fprintf(&s, "%s %d%%\n\n", bar, progPercent)
 	s.WriteString(ui.MutedStyle.Width(contentWidth).Render("This may take several minutes depending on your connection."))
 
 	return s.String()
 }
 
-func printSetupSummary(m *model) {
+func printSetupSummary(m *deploymentModel) {
 	installed := m.totalTasks - len(m.skippedItems) - len(m.failedItems)
 
 	fmt.Println()
@@ -438,10 +480,14 @@ func printSetupSummary(m *model) {
 	}
 
 	fmt.Println()
+	fmt.Printf("Development mode: %s\n", m.devMode)
 	if m.disableSetup {
 		fmt.Println("Setup persistence: enabled (won't show next boot).")
 	} else {
 		fmt.Println("Setup persistence: disabled (will show on next boot).")
+	}
+	if strings.TrimSpace(m.devBootstrapErr) != "" {
+		fmt.Println(ui.WarningStyle.Render("Devcontainer bootstrap warning: " + m.devBootstrapErr))
 	}
 	fmt.Println("Your system is ready.")
 }
@@ -451,7 +497,10 @@ func getBrewPackages(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
+
 	packages := []string{}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
@@ -474,7 +523,10 @@ func getFlatpakApps(path string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
+
 	apps := []string{}
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {

@@ -33,7 +33,7 @@ mkdir -p /usr/share/ublue-os/homebrew/
 cp /ctx/custom/brew/*.Brewfile /usr/share/ublue-os/homebrew/
 
 echo "::group:: Install Galena CLI"
-echo "galena CLI is copied from the galena-cli-builder stage in Containerfile."
+echo "galena and galena-build CLIs are copied from the galena-cli-builder stage in Containerfile."
 echo "::endgroup::"
 
 # Consolidate Just Files
@@ -47,6 +47,12 @@ cp /ctx/custom/flatpaks/*.preinstall /etc/flatpak/preinstall.d/
 mkdir -p /usr/share/galena
 install -m 0644 /ctx/custom/vscode/settings.json /usr/share/galena/vscode-settings.json
 
+# Copy devcontainer profile catalog/templates for galena dev workflows
+if [ -d /ctx/custom/devcontainer ]; then
+    mkdir -p /usr/share/galena/devcontainer
+    cp -r /ctx/custom/devcontainer/* /usr/share/galena/devcontainer/
+fi
+
 echo "::endgroup::"
 
 echo "::group:: Install Packages"
@@ -55,6 +61,9 @@ echo "::group:: Install Packages"
 # Example: dnf5 install -y tmux
 # Example using COPR with isolated pattern:
 # copr_install_isolated "ublue-os/staging" package-name
+
+# Wails dependency - WebKitGTK development files
+dnf5 install -y webkit2gtk4.1-devel
 
 echo "::endgroup::"
 

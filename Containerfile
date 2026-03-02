@@ -34,13 +34,14 @@
 # See: https://docs.projectbluefin.io/contributing/ for architecture diagram
 ###############################################################################
 
-# Build galena CLI once and copy binary into final image.
-FROM golang:1.23 AS galena-cli-builder
+# Build galena and galena-build CLIs and copy binaries into final image.
+FROM golang:1.24 AS galena-cli-builder
 WORKDIR /src
 COPY go.mod go.sum ./
 COPY cmd ./cmd
 COPY internal ./internal
-RUN go build -o /out/galena ./cmd/galena/
+RUN go build -o /out/galena ./cmd/galena/ && \
+    go build -o /out/galena-build ./cmd/galena-build/
 
 # Context stage - combine local and imported OCI container resources
 FROM scratch AS ctx
@@ -55,6 +56,7 @@ COPY --from=ghcr.io/ublue-os/brew:latest /system_files /oci/brew
 # Base Image - Bluefin Developer Experience (GNOME + dev tools)
 FROM ghcr.io/ublue-os/bluefin-dx:stable
 COPY --from=galena-cli-builder /out/galena /usr/bin/galena
+COPY --from=galena-cli-builder /out/galena-build /usr/bin/galena-build
 
 ## Alternative base images, no desktop included (uncomment to use):
 # FROM ghcr.io/ublue-os/base-main:latest    
