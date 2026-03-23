@@ -14,6 +14,8 @@ import (
 	"github.com/iiroan/galena/internal/ui"
 )
 
+const trivyContainerImage = "ghcr.io/aquasecurity/trivy:0.69.3"
+
 var (
 	sbomImage  string
 	sbomOutput string
@@ -239,7 +241,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 					"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
 					"-v", fmt.Sprintf("%s:%s:Z", archiveDir, archiveDir),
 					"-w", rootDir,
-					"ghcr.io/aquasecurity/trivy:latest",
+					trivyContainerImage,
 					"image", "--input", archivePath,
 					"--format", sbomFormat, "--output", outputFile,
 				}
@@ -262,7 +264,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 		"run", "--rm",
 		"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
 		"-w", rootDir,
-		"ghcr.io/aquasecurity/trivy:latest",
+		trivyContainerImage,
 		"image", "--format", sbomFormat, "--output", outputFile, imageRef,
 	}
 
