@@ -142,7 +142,7 @@ jobs:
         if: steps.flags.outputs.should_sign == 'true'
 
       - name: Install Trivy
-        uses: aquasecurity/setup-trivy@3fb12ec # v0.2.6
+        uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
           version: v0.69.3
           cache: true
