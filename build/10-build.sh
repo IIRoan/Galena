@@ -62,9 +62,12 @@ echo "::group:: Install Packages"
 # Example using COPR with isolated pattern:
 # copr_install_isolated "ublue-os/staging" package-name
 
-# Wails dependency - WebKitGTK development files
-dnf5 install -y webkit2gtk4.1-devel
-
+# Wails v3 GTK4 backend deps (pkg-config: gtk4, webkitgtk-6.0)
+dnf5 install -y \
+  gtk4-devel \
+  webkitgtk6.0-devel \
+  pkgconf-pkg-config
+  
 echo "::endgroup::"
 
 echo "::group:: System Configuration"
