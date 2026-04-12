@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Applications
+GenericName=Galena Apps
+Comment=Manage Homebrew and Flatpak applications with Galena
+Exec=galena apps
+Icon=galena-logo
+Terminal=true
+Categories=System;
+Keywords=galena;applications;apps;brew;flatpak;packages;catalog;
+StartupNotify=true

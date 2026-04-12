@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Update
+GenericName=Galena System Update
+Comment=Run system updates for Galena with bootc
+Exec=galena update
+Icon=galena-logo
+Terminal=true
+Categories=System;
+Keywords=galena;update;upgrade;bootc;reboot;system;
+StartupNotify=true

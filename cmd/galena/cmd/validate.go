@@ -29,6 +29,7 @@ var validateCmd = &cobra.Command{
   - Containerfile syntax
   - Justfile syntax
   - Shell scripts (shellcheck)
+  - Logging policy (charmbracelet/log)
   - Go linting (golangci-lint)
   - Brewfiles
   - Flatpak files
@@ -42,6 +43,7 @@ Examples:
   galena-build validate --skip-brew           # Skip Brewfile validation
   galena-build validate --skip-flatpak        # Skip Flatpak validation
   galena-build validate --only shellcheck     # Run only shellcheck
+  galena-build validate --only logging        # Run only logging policy checks
   galena-build validate --only golangci       # Run only golangci-lint
   galena-build validate --skip brew,flatpak   # Skip specific checks`,
 	RunE: runValidate,
@@ -51,8 +53,8 @@ func init() {
 	validateCmd.Flags().BoolVar(&validateSkipContainerfile, "skip-containerfile", false, "Skip Containerfile validation (useful in CI without podman)")
 	validateCmd.Flags().BoolVar(&validateSkipBrew, "skip-brew", false, "Skip Brewfile validation")
 	validateCmd.Flags().BoolVar(&validateSkipFlatpak, "skip-flatpak", false, "Skip Flatpak validation")
-	validateCmd.Flags().StringArrayVar(&validateOnly, "only", nil, "Run only specific checks (config, containerfile, just, brew, flatpak, shellcheck, golangci)")
-	validateCmd.Flags().StringArrayVar(&validateSkip, "skip", nil, "Skip specific checks (config, containerfile, just, brew, flatpak, shellcheck, golangci)")
+	validateCmd.Flags().StringArrayVar(&validateOnly, "only", nil, "Run only specific checks (config, containerfile, just, brew, flatpak, shellcheck, logging, golangci)")
+	validateCmd.Flags().StringArrayVar(&validateSkip, "skip", nil, "Skip specific checks (config, containerfile, just, brew, flatpak, shellcheck, logging, golangci)")
 }
 
 func runValidate(cmd *cobra.Command, args []string) error {
@@ -120,6 +122,13 @@ func runValidate(cmd *cobra.Command, args []string) error {
 			Title: "Shell Scripts",
 			Run: func(ctx context.Context) validate.Result {
 				return validate.ShellScripts(ctx, rootDir)
+			},
+		},
+		{
+			ID:    "logging",
+			Title: "Logging Policy",
+			Run: func(ctx context.Context) validate.Result {
+				return validate.Logging(ctx, rootDir)
 			},
 		},
 		{
@@ -237,6 +246,7 @@ func resolveValidationChecks() (map[string]bool, error) {
 		"brew":          true,
 		"flatpak":       true,
 		"shellcheck":    true,
+		"logging":       true,
 		"golangci":      true,
 	}
 
@@ -305,6 +315,8 @@ func normalizeCheck(value string) (string, bool) {
 		return "flatpak", true
 	case "shell", "shellcheck", "shellchecks", "shell-script", "shell-scripts":
 		return "shellcheck", true
+	case "logging", "logger", "loggers", "log-policy", "logging-policy":
+		return "logging", true
 	case "golangci", "golangci-lint", "golint", "go-lint":
 		return "golangci", true
 	default:

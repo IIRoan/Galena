@@ -435,30 +435,29 @@ func runCISetup(cmd *cobra.Command, args []string) error {
 func runCIInfo(cmd *cobra.Command, args []string) error {
 	env := ci.Detect()
 
-	fmt.Println("CI Environment Information")
-	fmt.Println("==========================")
-	fmt.Printf("CI:                %v\n", env.IsCI)
-	fmt.Printf("GitHub Actions:    %v\n", env.IsGitHubActions)
-	fmt.Printf("Repository:        %s\n", env.Repository)
-	fmt.Printf("Repository Owner:  %s\n", env.RepositoryOwner)
-	fmt.Printf("Repository Name:   %s\n", env.RepositoryName)
-	fmt.Printf("Ref:               %s\n", env.Ref)
-	fmt.Printf("Ref Name:          %s\n", env.RefName)
-	fmt.Printf("SHA:               %s\n", env.SHA)
-	fmt.Printf("Run Number:        %d\n", env.RunNumber)
-	fmt.Printf("Run ID:            %s\n", env.RunID)
-	fmt.Printf("Event Name:        %s\n", env.EventName)
-	fmt.Printf("Default Branch:    %s\n", env.DefaultBranch)
-	fmt.Printf("Is Default Branch: %v\n", env.IsDefaultBranch)
-	fmt.Printf("Is Pull Request:   %v\n", env.IsPullRequest)
-	fmt.Printf("Actor:             %s\n", env.Actor)
-	fmt.Println()
-	fmt.Println("Computed Values")
-	fmt.Println("---------------")
-	fmt.Printf("Image Registry:    %s\n", env.ImageRegistry())
-	fmt.Printf("Image Name:        %s\n", env.ImageName())
-	fmt.Printf("Should Push:       %v\n", env.ShouldPush())
-	fmt.Printf("Tags:              %s\n", strings.Join(env.GenerateTags("stable"), ", "))
+	logger.Info("ci environment",
+		"ci", env.IsCI,
+		"github_actions", env.IsGitHubActions,
+		"repository", env.Repository,
+		"repository_owner", env.RepositoryOwner,
+		"repository_name", env.RepositoryName,
+		"ref", env.Ref,
+		"ref_name", env.RefName,
+		"sha", env.SHA,
+		"run_number", env.RunNumber,
+		"run_id", env.RunID,
+		"event_name", env.EventName,
+		"default_branch", env.DefaultBranch,
+		"is_default_branch", env.IsDefaultBranch,
+		"is_pull_request", env.IsPullRequest,
+		"actor", env.Actor,
+	)
+	logger.Info("ci computed values",
+		"image_registry", env.ImageRegistry(),
+		"image_name", env.ImageName(),
+		"should_push", env.ShouldPush(),
+		"tags", strings.Join(env.GenerateTags("stable"), ", "),
+	)
 
 	return nil
 }

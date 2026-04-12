@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena
+GenericName=Galena CLI
+Comment=Open the Galena device management CLI
+Exec=galena
+Icon=galena-logo
+Terminal=true
+Categories=System;
+Keywords=galena;cli;device;management;setup;status;update;apps;
+StartupNotify=true
