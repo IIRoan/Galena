@@ -11,6 +11,7 @@ My personal Linux OS built on [Bluefin DX](https://projectbluefin.io/). An immut
 
 Galena is based on [Bluefin DX](https://projectbluefin.io/) and includes these customizations:
 
+
 ### Build-time Additions
 
 - **NymVPN Daemon** - Privacy-focused VPN with mixnet technology (auto-updated from latest GitHub releases)
