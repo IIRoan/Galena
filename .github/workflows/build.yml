@@ -75,7 +75,7 @@ jobs:
         uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5
         with:
           go-version: ${{ env.GO_VERSION }}
-          cache: true
+          cache: false
 
       - name: Build galena
         run: |
@@ -145,7 +145,7 @@ jobs:
         uses: aquasecurity/setup-trivy@3fb12ec12f41e471780db15c232d5dd185dcb514 # v0.2.6
         with:
           version: v0.69.3
-          cache: true
+          cache: false
 
       - name: Build and push image
         id: build
