@@ -15,6 +15,7 @@ import (
 )
 
 const trivyContainerImage = "ghcr.io/aquasecurity/trivy:0.69.3"
+const defaultTrivyTimeout = "30m"
 
 var (
 	sbomImage  string
@@ -182,10 +183,12 @@ func createSBOMArchivePath(rootDir string) (string, func(), error) {
 
 func generateSBOMWithTrivy(ctx context.Context, imageRef, outputFile string, localImage bool, rootDir string) error {
 	trivyEnv := ensureTrivyEnv(rootDir)
+	timeout := trivyTimeout()
 	logger.Info("generating SBOM",
 		"image", imageRef,
 		"format", sbomFormat,
 		"output", outputFile,
+		"timeout", timeout,
 	)
 
 	if localImage && exec.CheckCommand("podman") {
@@ -195,21 +198,24 @@ func generateSBOMWithTrivy(ctx context.Context, imageRef, outputFile string, loc
 			logger.Info("trivy scan via podman archive", "path", archivePath)
 			save := exec.Podman(ctx, "image", "save", "--format", "docker-archive", "-o", archivePath, imageRef)
 			if save.Err == nil {
-				result := runTrivy(ctx, trivyEnv, "image", "--input", archivePath, "--format", sbomFormat, "--output", outputFile)
+				result := runTrivy(ctx, trivyEnv, "image", "--timeout", timeout, "--input", archivePath, "--format", sbomFormat, "--output", outputFile)
 				if result.Err == nil {
 					logger.Info("SBOM generated", "output", outputFile)
 					return nil
 				}
-				logger.Warn("SBOM generation via archive failed, falling back to direct scan", "stderr", exec.LastNLines(result.Stderr, 20))
+				logger.Error("SBOM generation via archive failed", "stderr", exec.LastNLines(result.Stderr, 20))
+				return fmt.Errorf("SBOM generation via archive failed: %w", result.Err)
 			} else {
-				logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+				logger.Error("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+				return fmt.Errorf("podman image save failed: %w", save.Err)
 			}
 		} else {
-			logger.Warn("could not create SBOM archive path", "error", err)
+			logger.Error("could not create SBOM archive path", "error", err)
+			return fmt.Errorf("could not create SBOM archive path: %w", err)
 		}
 	}
 
-	result := runTrivy(ctx, trivyEnv, "image", "--format", sbomFormat, "--output", outputFile, imageRef)
+	result := runTrivy(ctx, trivyEnv, "image", "--timeout", timeout, "--format", sbomFormat, "--output", outputFile, imageRef)
 	if result.Err != nil {
 		logger.Error("SBOM generation failed", "stderr", exec.LastNLines(result.Stderr, 20))
 		return fmt.Errorf("SBOM generation failed: %w", result.Err)
@@ -227,6 +233,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 	}
 
 	logger.Info("trivy not found; using container fallback")
+	timeout := trivyTimeout()
 
 	if localImage {
 		archivePath, cleanup, err := createSBOMArchivePath(rootDir)
@@ -243,6 +250,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 					"-w", rootDir,
 					trivyContainerImage,
 					"image", "--input", archivePath,
+					"--timeout", timeout,
 					"--format", sbomFormat, "--output", outputFile,
 				}
 				result := exec.Podman(ctx, args...)
@@ -250,12 +258,15 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 					logger.Info("SBOM generated", "output", outputFile)
 					return nil
 				}
-				logger.Warn("SBOM generation via archive failed, falling back to direct container scan", "stderr", exec.LastNLines(result.Stderr, 20))
+				logger.Error("SBOM generation via archive failed", "stderr", exec.LastNLines(result.Stderr, 20))
+				return fmt.Errorf("SBOM generation via archive failed: %w", result.Err)
 			} else {
-				logger.Warn("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+				logger.Error("podman image save failed", "stderr", exec.LastNLines(save.Stderr, 20))
+				return fmt.Errorf("podman image save failed: %w", save.Err)
 			}
 		} else {
-			logger.Warn("could not create SBOM archive path", "error", err)
+			logger.Error("could not create SBOM archive path", "error", err)
+			return fmt.Errorf("could not create SBOM archive path: %w", err)
 		}
 	}
 
@@ -265,7 +276,7 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 		"-v", fmt.Sprintf("%s:%s:Z", rootDir, rootDir),
 		"-w", rootDir,
 		trivyContainerImage,
-		"image", "--format", sbomFormat, "--output", outputFile, imageRef,
+		"image", "--timeout", timeout, "--format", sbomFormat, "--output", outputFile, imageRef,
 	}
 
 	result := exec.Podman(ctx, directArgs...)
@@ -276,6 +287,16 @@ func generateSBOMWithTrivyContainer(ctx context.Context, imageRef, outputFile st
 
 	logger.Info("SBOM generated", "output", outputFile)
 	return nil
+}
+
+func trivyTimeout() string {
+	if timeout := strings.TrimSpace(os.Getenv("GALENA_TRIVY_TIMEOUT")); timeout != "" {
+		return timeout
+	}
+	if timeout := strings.TrimSpace(os.Getenv("TRIVY_TIMEOUT")); timeout != "" {
+		return timeout
+	}
+	return defaultTrivyTimeout
 }
 
 func candidateImageRefs(imageRef string) []string {
