@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Development
+GenericName=Galena Dev
+Comment=Open Galena development and devcontainer workflows
+Exec=galena dev
+Icon=galena-logo
+Terminal=true
+Categories=Development;
+Keywords=galena;dev;development;devcontainer;workspace;container;
+StartupNotify=true

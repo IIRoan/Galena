@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Tasks
+GenericName=Galena Bluefin Tasks
+Comment=Browse and run Bluefin ujust tasks through Galena
+Exec=galena ujust
+Icon=galena-logo
+Terminal=true
+Categories=System;
+Keywords=galena;tasks;ujust;bluefin;automation;recipes;
+StartupNotify=true

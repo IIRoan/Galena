@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Setup
+GenericName=Galena Setup Wizard
+Comment=Run the Galena first-boot setup wizard
+Exec=galena setup
+Icon=galena-logo
+Terminal=true
+Categories=Settings;
+Keywords=galena;setup;first boot;wizard;onboarding;install;
+StartupNotify=true

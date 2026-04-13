@@ -1,0 +1,12 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Galena Status
+GenericName=Galena Device Status
+Comment=Show runtime device status for this Galena system
+Exec=galena status
+Icon=galena-logo
+Terminal=true
+Categories=System;
+Keywords=galena;status;device;system;health;runtime;bootc;
+StartupNotify=true

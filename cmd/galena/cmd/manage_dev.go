@@ -49,7 +49,7 @@ var devCmd = &cobra.Command{
 var devListCmd = &cobra.Command{
 	Use:     "list",
 	Aliases: []string{"ls"},
-	Short:   "List running and stopped devcontainers discovered via Podman",
+	Short:   "List running and stopped devcontainers discovered via container labels",
 	RunE:    runDevList,
 }
 
@@ -240,6 +240,7 @@ type discoveredDevcontainer struct {
 	Status    string
 	Workspace string
 	Config    string
+	Runtime   string
 }
 
 func runDevList(cmd *cobra.Command, args []string) error {
@@ -270,7 +271,10 @@ func runDevInit(cmd *cobra.Command, args []string) error {
 }
 
 func runDevUp(cmd *cobra.Command, args []string) error {
-	if err := galexec.RequireCommands("devcontainer", "podman"); err != nil {
+	if err := galexec.RequireCommands("devcontainer"); err != nil {
+		return err
+	}
+	if err := requireContainerRuntime(); err != nil {
 		return err
 	}
 	workspace, err := resolveWorkspace()
@@ -375,9 +379,6 @@ func runDevExecPrompt() error {
 }
 
 func runDevStop(cmd *cobra.Command, args []string) error {
-	if err := galexec.RequireCommands("podman"); err != nil {
-		return err
-	}
 	workspace, err := resolveWorkspace()
 	if err != nil {
 		return err
@@ -402,7 +403,11 @@ func runDevStop(cmd *cobra.Command, args []string) error {
 			alreadyStopped++
 			continue
 		}
-		result := galexec.RunSimple(context.Background(), "podman", "stop", entry.ID)
+		runtime := strings.TrimSpace(entry.Runtime)
+		if runtime == "" {
+			runtime = "podman"
+		}
+		result := galexec.RunSimple(context.Background(), runtime, "stop", entry.ID)
 		if result.Err != nil {
 			stderr := strings.TrimSpace(galexec.LastNLines(result.Stderr, 5))
 			if stderr == "" {
@@ -444,6 +449,7 @@ func runDevStatus(cmd *cobra.Command, args []string) error {
 	fmt.Println(ui.Title.Render("Host Tools"))
 	printTool("devcontainer")
 	printTool("podman")
+	printTool("docker")
 	printTool("git")
 
 	fmt.Println()
@@ -495,10 +501,55 @@ func runDevStatus(cmd *cobra.Command, args []string) error {
 }
 
 func discoverDevcontainers(ctx context.Context) ([]discoveredDevcontainer, error) {
-	if err := galexec.RequireCommands("podman"); err != nil {
-		return nil, err
+	runtimes := availableContainerRuntimes()
+	if len(runtimes) == 0 {
+		return nil, fmt.Errorf("missing required command: install podman or docker")
 	}
 
+	containers := make([]discoveredDevcontainer, 0)
+	errorsByRuntime := make([]string, 0)
+	successfulQueries := 0
+
+	for _, runtime := range runtimes {
+		runtimeContainers, err := discoverDevcontainersForRuntime(ctx, runtime)
+		if err != nil {
+			errorsByRuntime = append(errorsByRuntime, fmt.Sprintf("%s: %v", runtime, err))
+			continue
+		}
+		successfulQueries++
+		containers = append(containers, runtimeContainers...)
+	}
+	if successfulQueries == 0 {
+		return nil, fmt.Errorf("container discovery failed (%s)", strings.Join(errorsByRuntime, "; "))
+	}
+
+	sort.SliceStable(containers, func(i, j int) bool {
+		iRunning := strings.EqualFold(containers[i].State, "running")
+		jRunning := strings.EqualFold(containers[j].State, "running")
+		if iRunning != jRunning {
+			return iRunning
+		}
+		if containers[i].Workspace != containers[j].Workspace {
+			return containers[i].Workspace < containers[j].Workspace
+		}
+		return containers[i].Name < containers[j].Name
+	})
+
+	return containers, nil
+}
+
+func discoverDevcontainersForRuntime(ctx context.Context, runtime string) ([]discoveredDevcontainer, error) {
+	switch runtime {
+	case "podman":
+		return discoverPodmanDevcontainers(ctx)
+	case "docker":
+		return discoverDockerDevcontainers(ctx)
+	default:
+		return nil, fmt.Errorf("unsupported runtime %q", runtime)
+	}
+}
+
+func discoverPodmanDevcontainers(ctx context.Context) ([]discoveredDevcontainer, error) {
 	result := galexec.RunSimple(ctx, "podman", "ps", "-a", "--format", "json")
 	if result.Err != nil {
 		stderr := strings.TrimSpace(galexec.LastNLines(result.Stderr, 8))
@@ -515,36 +566,86 @@ func discoverDevcontainers(ctx context.Context) ([]discoveredDevcontainer, error
 
 	containers := make([]discoveredDevcontainer, 0)
 	for _, entry := range entries {
-		name := firstName(entry.Names)
-		workspace := firstNonEmpty(entry.Labels["devcontainer.local_folder"], entry.Labels["vsch.local.folder"])
-		config := firstNonEmpty(entry.Labels["devcontainer.config_file"], entry.Labels["vsch.local.config_file"])
-		isDevcontainer := workspace != "" || config != "" || strings.HasPrefix(name, "vsc-")
-		if !isDevcontainer {
-			continue
+		containers = appendIfDevcontainer(containers, discoveredDevcontainer{
+			ID:      trimID(entry.ID),
+			Name:    firstName(entry.Names),
+			State:   entry.State,
+			Status:  entry.Status,
+			Runtime: "podman",
+		}, entry.Labels)
+	}
+	return containers, nil
+}
+
+type dockerInspectEntry struct {
+	ID     string `json:"Id"`
+	Name   string `json:"Name"`
+	Config struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
+	State struct {
+		Status string `json:"Status"`
+	} `json:"State"`
+}
+
+func discoverDockerDevcontainers(ctx context.Context) ([]discoveredDevcontainer, error) {
+	listResult := galexec.RunSimple(ctx, "docker", "ps", "-aq")
+	if listResult.Err != nil {
+		stderr := strings.TrimSpace(galexec.LastNLines(listResult.Stderr, 8))
+		if stderr == "" {
+			stderr = listResult.Err.Error()
 		}
-		containers = append(containers, discoveredDevcontainer{
-			ID:        trimID(entry.ID),
-			Name:      name,
-			State:     entry.State,
-			Status:    entry.Status,
-			Workspace: workspace,
-			Config:    config,
-		})
+		return nil, fmt.Errorf("docker ps failed: %s", stderr)
+	}
+	containerIDs := strings.Fields(strings.TrimSpace(listResult.Stdout))
+	if len(containerIDs) == 0 {
+		return nil, nil
 	}
 
-	sort.SliceStable(containers, func(i, j int) bool {
-		iRunning := strings.EqualFold(containers[i].State, "running")
-		jRunning := strings.EqualFold(containers[j].State, "running")
-		if iRunning != jRunning {
-			return iRunning
+	args := append([]string{"inspect"}, containerIDs...)
+	inspectResult := galexec.RunSimple(ctx, "docker", args...)
+	if inspectResult.Err != nil {
+		stderr := strings.TrimSpace(galexec.LastNLines(inspectResult.Stderr, 8))
+		if stderr == "" {
+			stderr = inspectResult.Err.Error()
 		}
-		if containers[i].Workspace != containers[j].Workspace {
-			return containers[i].Workspace < containers[j].Workspace
-		}
-		return containers[i].Name < containers[j].Name
-	})
+		return nil, fmt.Errorf("docker inspect failed: %s", stderr)
+	}
 
+	entries := make([]dockerInspectEntry, 0)
+	if err := json.Unmarshal([]byte(inspectResult.Stdout), &entries); err != nil {
+		return nil, fmt.Errorf("parsing docker inspect output: %w", err)
+	}
+
+	containers := make([]discoveredDevcontainer, 0)
+	for _, entry := range entries {
+		name := strings.TrimPrefix(strings.TrimSpace(entry.Name), "/")
+		status := strings.TrimSpace(entry.State.Status)
+		if status == "" {
+			status = "unknown"
+		}
+		containers = appendIfDevcontainer(containers, discoveredDevcontainer{
+			ID:      trimID(entry.ID),
+			Name:    name,
+			State:   status,
+			Status:  status,
+			Runtime: "docker",
+		}, entry.Config.Labels)
+	}
 	return containers, nil
+}
+
+func appendIfDevcontainer(containers []discoveredDevcontainer, container discoveredDevcontainer, labels map[string]string) []discoveredDevcontainer {
+	workspace := firstNonEmpty(labels["devcontainer.local_folder"], labels["vsch.local.folder"])
+	config := firstNonEmpty(labels["devcontainer.config_file"], labels["vsch.local.config_file"])
+	name := strings.TrimSpace(container.Name)
+	isDevcontainer := workspace != "" || config != "" || strings.HasPrefix(name, "vsc-")
+	if !isDevcontainer {
+		return containers
+	}
+	container.Workspace = workspace
+	container.Config = config
+	return append(containers, container)
 }
 
 func runningDevcontainersForWorkspace(ctx context.Context, workspace string) ([]discoveredDevcontainer, error) {
@@ -588,7 +689,7 @@ func devcontainersForWorkspace(ctx context.Context, workspace string) ([]discove
 
 func printDiscoveredDevcontainers(containers []discoveredDevcontainer) {
 	if len(containers) == 0 {
-		fmt.Println(ui.InfoBox.Render("No devcontainers discovered via Podman labels (running or stopped)."))
+		fmt.Println(ui.InfoBox.Render("No devcontainers discovered via container labels (running or stopped)."))
 		return
 	}
 
@@ -602,6 +703,9 @@ func printDiscoveredDevcontainers(containers []discoveredDevcontainer) {
 			workspace = "(workspace label unavailable)"
 		}
 		fmt.Printf("  %s %-20s %s\n", state, entry.Name, ui.MutedStyle.Render(entry.ID+" - "+entry.Status))
+		if strings.TrimSpace(entry.Runtime) != "" {
+			fmt.Printf("      runtime:   %s\n", ui.MutedStyle.Render(entry.Runtime))
+		}
 		fmt.Printf("      workspace: %s\n", workspace)
 		if strings.TrimSpace(entry.Config) != "" {
 			fmt.Printf("      config:    %s\n", ui.MutedStyle.Render(entry.Config))
@@ -807,7 +911,10 @@ func runDevcontainerCommandStreaming(args ...string) error {
 }
 
 func bootstrapSetupDevcontainer(profileID string) error {
-	if err := galexec.RequireCommands("devcontainer", "podman"); err != nil {
+	if err := galexec.RequireCommands("devcontainer"); err != nil {
+		return err
+	}
+	if err := requireContainerRuntime(); err != nil {
 		return err
 	}
 
@@ -821,6 +928,24 @@ func bootstrapSetupDevcontainer(profileID string) error {
 		}
 	}
 	return runDevcontainerCommandStreaming("up", "--workspace-folder", workspace)
+}
+
+func availableContainerRuntimes() []string {
+	runtimes := make([]string, 0, 2)
+	if galexec.CheckCommand("podman") {
+		runtimes = append(runtimes, "podman")
+	}
+	if galexec.CheckCommand("docker") {
+		runtimes = append(runtimes, "docker")
+	}
+	return runtimes
+}
+
+func requireContainerRuntime() error {
+	if len(availableContainerRuntimes()) == 0 {
+		return fmt.Errorf("missing required command: install podman or docker")
+	}
+	return nil
 }
 
 func resolveSetupWorkspace() (string, error) {
