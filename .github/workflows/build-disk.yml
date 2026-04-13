@@ -83,9 +83,11 @@ jobs:
 
       - name: Determine image reference
         id: image
+        env:
+          INPUT_IMAGE_REF: ${{ inputs.image_ref }}
         run: |
-          if [[ -n "${{ inputs.image_ref }}" ]]; then
-            echo "ref=${{ inputs.image_ref }}" >> $GITHUB_OUTPUT
+          if [[ -n "$INPUT_IMAGE_REF" ]]; then
+            echo "ref=$INPUT_IMAGE_REF" >> $GITHUB_OUTPUT
           else
             IMAGE_REF="${IMAGE_REGISTRY}/${IMAGE_NAME}:${{ env.DEFAULT_TAG }}"
             echo "ref=${IMAGE_REF}" >> $GITHUB_OUTPUT
