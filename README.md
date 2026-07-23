@@ -18,6 +18,7 @@ Galena is based on [Bluefin DX](https://projectbluefin.io/) and includes these c
 - **Custom Branding** - Galena logos, wallpapers, and Plymouth boot themes throughout the system
 - **First-boot Services** - Optimized systemd services for a smooth initial experience
 
+
 ### Runtime Applications (Flatpak)
 
 Over 60 applications pre-configured for first-boot installation including:
