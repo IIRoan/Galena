@@ -9,6 +9,7 @@ Scripts are named with a number prefix (e.g., `10-build.sh`, `20-onepassword.sh`
 ## Included Scripts
 
 - **`10-build.sh`** - Main build script for base system modifications, package installation, and service configuration
+- **`18-helium.sh`** - Installs the native Helium Browser package from the official Fedora COPR
 
 ## Example Scripts
 

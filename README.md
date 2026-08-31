@@ -15,6 +15,7 @@ Galena is based on [Bluefin DX](https://projectbluefin.io/) and includes these c
 ### Build-time Additions
 
 - **NymVPN Daemon** - Privacy-focused VPN with mixnet technology (auto-updated from latest GitHub releases)
+- **Helium Browser** - Native Fedora package installed at build time from the official Helium COPR
 - **Custom Branding** - Galena logos, wallpapers, and Plymouth boot themes throughout the system
 - **First-boot Services** - Optimized systemd services for a smooth initial experience
 
