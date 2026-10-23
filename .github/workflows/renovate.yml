@@ -12,6 +12,18 @@ on:
       - '.github/workflows/renovate.yml'
 
 jobs:
+  keepalive:
+    name: Keep Renovate scheduled
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      # Renew the workflow's activity even when Renovate has no updates to commit.
+      - name: Refresh scheduled workflow activity
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PUT "repos/${GITHUB_REPOSITORY}/actions/workflows/renovate.yml/enable"
+
   renovate:
     name: Run Renovate
     runs-on: ubuntu-latest
